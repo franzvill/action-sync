@@ -938,6 +938,14 @@ function renderSettings() {
                 <span class="form-hint">These instructions will be added to the AI prompt for this project</span>
             </div>
             <div class="form-group" style="margin-top: 12px;">
+                <label class="form-label form-label-sm">Kanban JQL Filter</label>
+                <input type="text" class="form-input form-input-sm" id="kanban-jql-${p.id}"
+                    placeholder="e.g., status != Done AND assignee = currentUser()"
+                    value="${escapeHtml(p.kanban_jql || '')}"
+                    onchange="handleUpdateProjectField(${p.id}, 'kanban_jql', this.value)">
+                <span class="form-hint">JQL query to filter which tickets appear on the Kanban board</span>
+            </div>
+            <div class="form-group" style="margin-top: 12px;">
                 <label class="toggle-label">
                     <input type="checkbox" class="toggle-input" id="embeddings-${p.id}"
                         ${p.embeddings_enabled ? 'checked' : ''}
