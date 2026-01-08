@@ -28,6 +28,7 @@ from meeting_processor import process_meeting_transcription, ask_jira_question
 from embedding_service import (
     store_meeting_with_embeddings, semantic_search, get_meetings, get_meeting_detail
 )
+from jira_tools import JiraClient
 
 settings = get_settings()
 
@@ -312,6 +313,40 @@ async def update_jira_project(
     await db.commit()
     await db.refresh(project)
     return project
+
+
+# ============ Kanban Routes ============
+
+@app.get("/api/jira/workflow/{project_key}")
+async def get_workflow_statuses(
+    project_key: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get workflow statuses for Kanban columns."""
+    # Verify user has this project configured
+    result = await db.execute(
+        select(JiraProject).where(
+            JiraProject.user_id == current_user.id,
+            JiraProject.project_key == project_key.upper()
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    # Get Jira config
+    result = await db.execute(select(JiraConfig).where(JiraConfig.user_id == current_user.id))
+    jira_config = result.scalar_one_or_none()
+    if not jira_config:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Jira not configured")
+
+    client = JiraClient(jira_config.jira_base_url, jira_config.jira_email, jira_config.jira_api_token)
+
+    try:
+        statuses = await client.get_workflow_statuses(project_key.upper())
+        return {"statuses": statuses}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 # ============ Meeting Processing Routes ============
@@ -630,7 +665,7 @@ async def get_meeting(
         user_id=current_user.id
     )
     if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
     return meeting
 
 
@@ -665,7 +700,7 @@ async def delete_meeting(
     )
     meeting = result.scalar_one_or_none()
     if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
 
     await db.delete(meeting)
     await db.commit()
@@ -685,7 +720,7 @@ async def serve_index():
 async def serve_spa(path: str):
     if not path.startswith("api/"):
         return FileResponse("../frontend/templates/index.html")
-    raise HTTPException(status_code=404, detail="Not found")
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
 
 if __name__ == "__main__":

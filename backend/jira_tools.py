@@ -302,6 +302,29 @@ class JiraClient:
             json={"transition": {"id": transition_id}}
         )
 
+    async def get_workflow_statuses(self, project_key: str) -> list[dict]:
+        """Get all statuses available in a project's workflow."""
+        data = await self._request("GET", f"/project/{project_key}/statuses")
+
+        # Extract unique statuses across all issue types
+        statuses = {}
+        for issue_type in data:
+            for status in issue_type.get("statuses", []):
+                status_id = status["id"]
+                if status_id not in statuses:
+                    statuses[status_id] = {
+                        "id": status_id,
+                        "name": status["name"],
+                        "category": status.get("statusCategory", {}).get("key", "undefined")
+                    }
+
+        # Sort by category: to-do, in-progress, done
+        category_order = {"new": 0, "indeterminate": 1, "done": 2}
+        return sorted(
+            statuses.values(),
+            key=lambda s: (category_order.get(s["category"], 1), s["name"])
+        )
+
 
 # Global client instance (set before creating tools)
 _jira_client: Optional[JiraClient] = None
