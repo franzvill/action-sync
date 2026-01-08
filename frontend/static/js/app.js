@@ -23,7 +23,14 @@ const state = {
     selectedMeeting: null,
     searchQuery: '',
     searchResults: [],
-    searchLoading: false
+    searchLoading: false,
+    // Work mode state
+    workMode: 'kanban',  // 'kanban' or 'detail' or 'working'
+    workStatuses: [],
+    workTickets: [],
+    workTicketsLoading: false,
+    selectedTicket: null,
+    selectedTicketLoading: false,
 };
 
 // =====================================================
@@ -202,6 +209,75 @@ async function deleteMeeting(meetingId) {
         await loadMeetings();
     } catch (e) {
         showToast(e.message, 'error');
+    }
+}
+
+// =====================================================
+// Work Mode Functions
+// =====================================================
+
+async function loadWorkflowStatuses(projectKey) {
+    try {
+        const data = await api(`/jira/workflow/${projectKey}`);
+        state.workStatuses = data.statuses || [];
+    } catch (e) {
+        console.error('Failed to load workflow:', e);
+        state.workStatuses = [];
+    }
+}
+
+async function loadKanbanTickets(projectKey) {
+    state.workTicketsLoading = true;
+    render();
+    try {
+        const data = await api(`/jira/kanban/${projectKey}`);
+        state.workTickets = data.issues || [];
+    } catch (e) {
+        console.error('Failed to load tickets:', e);
+        showToast(e.message, 'error');
+        state.workTickets = [];
+    }
+    state.workTicketsLoading = false;
+    render();
+}
+
+async function loadTicketDetails(issueKey) {
+    state.selectedTicketLoading = true;
+    state.workMode = 'detail';
+    render();
+    try {
+        state.selectedTicket = await api(`/jira/ticket/${issueKey}`);
+    } catch (e) {
+        showToast(e.message, 'error');
+        state.selectedTicket = null;
+        state.workMode = 'kanban';
+    }
+    state.selectedTicketLoading = false;
+    render();
+}
+
+async function startWork(projectId, issueKey) {
+    if (state.isProcessing) {
+        showToast('Another task is processing', 'error');
+        return;
+    }
+
+    state.isProcessing = true;
+    state.workMode = 'working';
+    state.logs = [];
+    state.lastResult = null;
+    render();
+
+    try {
+        await api('/work/start', {
+            method: 'POST',
+            body: JSON.stringify({ project_id: projectId, issue_key: issueKey })
+        });
+    } catch (e) {
+        state.isProcessing = false;
+        state.workMode = 'detail';
+        showToast(e.message, 'error');
+        render();
     }
 }
 
