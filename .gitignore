@@ -55,3 +55,4 @@ logs/
 .coverage
 htmlcov/
 push.sh
+openshift/deployment.yaml
