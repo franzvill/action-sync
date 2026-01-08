@@ -209,12 +209,12 @@ class JiraClient:
     async def search_issues(self, jql: str, max_results: int = 50) -> list[dict]:
         """Search for issues using JQL."""
         data = await self._request(
-            "GET",
-            "/search",
-            params={
+            "POST",
+            "/search/jql",
+            json={
                 "jql": jql,
                 "maxResults": max_results,
-                "fields": "summary,status,assignee,priority,issuetype,created,updated"
+                "fields": ["summary", "status", "assignee", "priority", "issuetype", "created", "updated"]
             }
         )
 
