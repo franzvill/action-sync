@@ -54,3 +54,4 @@ logs/
 .pytest_cache/
 .coverage
 htmlcov/
+push.sh
