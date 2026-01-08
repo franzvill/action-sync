@@ -46,6 +46,7 @@ async def init_db():
         ("jira_projects", "gitlab_projects", "TEXT"),
         ("jira_projects", "custom_instructions", "TEXT"),
         ("jira_projects", "embeddings_enabled", "BOOLEAN DEFAULT FALSE"),
+        ("jira_projects", "kanban_jql", "TEXT"),
     ]
     for table, column, col_type in migrations:
         try:

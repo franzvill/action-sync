@@ -71,6 +71,7 @@ class JiraProjectCreate(BaseModel):
     gitlab_projects: Optional[str] = None  # Comma-separated list
     custom_instructions: Optional[str] = None  # Custom instructions for Claude
     embeddings_enabled: bool = False  # Beta: Enable meeting history with semantic search
+    kanban_jql: Optional[str] = None  # JQL filter for Kanban board
 
 
 class JiraProjectResponse(BaseModel):
@@ -81,6 +82,7 @@ class JiraProjectResponse(BaseModel):
     gitlab_projects: Optional[str] = None
     custom_instructions: Optional[str] = None
     embeddings_enabled: bool = False
+    kanban_jql: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -91,6 +93,7 @@ class JiraProjectUpdate(BaseModel):
     gitlab_projects: Optional[str] = None
     custom_instructions: Optional[str] = None
     embeddings_enabled: Optional[bool] = None
+    kanban_jql: Optional[str] = None
 
 
 # Meeting schemas

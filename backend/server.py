@@ -258,7 +258,8 @@ async def add_jira_project(
         is_default=project_data.is_default,
         gitlab_projects=project_data.gitlab_projects,
         custom_instructions=project_data.custom_instructions,
-        embeddings_enabled=project_data.embeddings_enabled
+        embeddings_enabled=project_data.embeddings_enabled,
+        kanban_jql=project_data.kanban_jql
     )
     db.add(project)
     await db.commit()
@@ -305,6 +306,8 @@ async def update_jira_project(
         project.custom_instructions = project_data.custom_instructions if project_data.custom_instructions else None
     if project_data.embeddings_enabled is not None:
         project.embeddings_enabled = project_data.embeddings_enabled
+    if project_data.kanban_jql is not None:
+        project.kanban_jql = project_data.kanban_jql if project_data.kanban_jql else None
 
     await db.commit()
     await db.refresh(project)

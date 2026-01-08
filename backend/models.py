@@ -46,6 +46,7 @@ class JiraProject(Base):
     gitlab_projects = Column(Text, nullable=True)  # Comma-separated list of GitLab project paths
     custom_instructions = Column(Text, nullable=True)  # Custom instructions for Claude
     embeddings_enabled = Column(Boolean, default=False)  # Beta: Enable meeting history with semantic search
+    kanban_jql = Column(Text, nullable=True)  # JQL filter for Kanban board
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="projects")
