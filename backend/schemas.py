@@ -108,3 +108,7 @@ class JiraQuestionRequest(BaseModel):
     project_key: str
 
 
+# Work schemas
+class WorkStartRequest(BaseModel):
+    project_id: int
+    issue_key: str

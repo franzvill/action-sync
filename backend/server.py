@@ -17,7 +17,7 @@ from schemas import (
     UserCreate, UserLogin, UserResponse, Token,
     JiraConfigCreate, JiraConfigResponse, JiraConfigUpdate,
     JiraProjectCreate, JiraProjectResponse, JiraProjectUpdate,
-    MeetingProcessRequest, JiraQuestionRequest
+    MeetingProcessRequest, JiraQuestionRequest, WorkStartRequest
 )
 from auth import (
     verify_password, get_password_hash, create_access_token,
@@ -25,6 +25,7 @@ from auth import (
 )
 from config import get_settings
 from meeting_processor import process_meeting_transcription, ask_jira_question
+from work_processor import clone_repos_for_work, process_work_ticket
 from embedding_service import (
     store_meeting_with_embeddings, semantic_search, get_meetings, get_meeting_detail
 )
@@ -425,6 +426,138 @@ async def get_ticket_details(
         return ticket
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@app.post("/api/work/start")
+async def start_work(
+    work_data: WorkStartRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Start AI work on a Jira ticket."""
+    if processing_state.is_processing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Another task is being processed. Please wait or abort it."
+        )
+
+    # Get project
+    result = await db.execute(
+        select(JiraProject).where(
+            JiraProject.id == work_data.project_id,
+            JiraProject.user_id == current_user.id
+        )
+    )
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    # Verify issue belongs to project
+    if not work_data.issue_key.upper().startswith(project.project_key):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Issue does not belong to this project")
+
+    # Get Jira config
+    result = await db.execute(select(JiraConfig).where(JiraConfig.user_id == current_user.id))
+    jira_config = result.scalar_one_or_none()
+    if not jira_config:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Jira not configured")
+
+    # Verify GitLab is configured
+    if not jira_config.gitlab_url or not jira_config.gitlab_token:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="GitLab not configured")
+
+    if not project.gitlab_projects:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No GitLab repositories configured for this project")
+
+    # Start processing
+    processing_state.is_processing = True
+    processing_state.current_user_id = current_user.id
+
+    task = asyncio.create_task(
+        _work_ticket_task(
+            issue_key=work_data.issue_key.upper(),
+            project_key=project.project_key,
+            jira_base_url=jira_config.jira_base_url,
+            jira_email=jira_config.jira_email,
+            jira_api_token=jira_config.jira_api_token,
+            gitlab_url=jira_config.gitlab_url,
+            gitlab_token=jira_config.gitlab_token,
+            gitlab_projects=project.gitlab_projects,
+            custom_instructions=project.custom_instructions,
+            user_id=current_user.id
+        )
+    )
+    processing_state.current_task = task
+
+    return {"status": "started"}
+
+
+async def _work_ticket_task(
+    issue_key: str,
+    project_key: str,
+    jira_base_url: str,
+    jira_email: str,
+    jira_api_token: str,
+    gitlab_url: str,
+    gitlab_token: str,
+    gitlab_projects: str,
+    custom_instructions: Optional[str],
+    user_id: int
+):
+    """Background task for AI ticket work."""
+
+    async def message_callback(message: dict):
+        await manager.send_message(user_id, message)
+
+    try:
+        # Get full ticket details
+        await message_callback({"type": "text", "content": f"Fetching ticket {issue_key}...\n"})
+        client = JiraClient(jira_base_url, jira_email, jira_api_token)
+        ticket = await client.get_issue_full(issue_key)
+        await message_callback({"type": "text", "content": f"Ticket: {ticket['summary']}\n\n"})
+
+        # Clone repositories
+        project_list = [p.strip() for p in gitlab_projects.split(",") if p.strip()]
+        work_dir = await clone_repos_for_work(
+            gitlab_url=gitlab_url,
+            gitlab_token=gitlab_token,
+            project_paths=project_list,
+            issue_key=issue_key,
+            callback=message_callback
+        )
+
+        await message_callback({"type": "text", "content": "\nStarting AI work...\n\n"})
+
+        # Process the ticket
+        result = await process_work_ticket(
+            ticket=ticket,
+            project_key=project_key,
+            jira_base_url=jira_base_url,
+            jira_email=jira_email,
+            jira_api_token=jira_api_token,
+            gitlab_url=gitlab_url,
+            gitlab_token=gitlab_token,
+            work_dir=work_dir,
+            message_callback=message_callback,
+            custom_instructions=custom_instructions
+        )
+
+        await manager.send_message(user_id, {
+            "type": "complete",
+            "success": result["success"],
+            "summary": result.get("summary", "")
+        })
+
+    except asyncio.CancelledError:
+        await manager.send_message(user_id, {"type": "aborted"})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        await manager.send_message(user_id, {"type": "error", "error": str(e)})
+    finally:
+        processing_state.is_processing = False
+        processing_state.current_task = None
+        processing_state.current_user_id = None
 
 
 # ============ Meeting Processing Routes ============
