@@ -1216,7 +1216,7 @@ function renderTicketDetail() {
             <div class="ticket-description">
                 <h3>Description</h3>
                 <div class="description-content">
-                    ${ticket.descriptionHtml || '<em>No description</em>'}
+                    ${ticket.descriptionHtml ? sanitizeHtml(ticket.descriptionHtml) : '<em>No description</em>'}
                 </div>
             </div>
 
@@ -1372,10 +1372,29 @@ function truncate(text, len) {
     return text.substring(0, len) + '...';
 }
 
+function sanitizeHtml(html) {
+    if (!html) return '';
+    // Use DOMPurify if available, otherwise fall back to basic script tag stripping
+    if (typeof DOMPurify !== 'undefined') {
+        return DOMPurify.sanitize(html, {
+            ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'b', 'i', 'u', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'code', 'pre', 'span', 'div', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'hr'],
+            ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'class', 'style', 'title', 'width', 'height'],
+            ALLOW_DATA_ATTR: false
+        });
+    }
+    // Fallback: strip script tags and event handlers
+    return html
+        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+        .replace(/on\w+\s*=\s*(['"]).*?\1/gi, '')
+        .replace(/on\w+\s*=\s*[^\s>]+/gi, '');
+}
+
 function formatContent(content) {
     if (!content) return '';
     // Use marked.js for proper markdown rendering
     let html = marked.parse(content);
+    // Sanitize the HTML to prevent XSS from markdown content
+    html = sanitizeHtml(html);
     // Highlight Jira ticket references
     html = html.replace(/([A-Z]+-\d+)/g, '<span class="ticket-ref">$1</span>');
     return html;

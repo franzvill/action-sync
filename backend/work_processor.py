@@ -45,6 +45,7 @@ async def clone_repos_for_work(
             continue
 
         clone_url = f"https://oauth2:{gitlab_token}@{gitlab_host}/{project_path}.git"
+        masked_url = f"https://oauth2:***@{gitlab_host}/{project_path}.git"
         project_name = project_path.split("/")[-1]
         target_dir = work_path / project_name
 
@@ -64,11 +65,15 @@ async def clone_repos_for_work(
                     await callback({"type": "text", "content": f"Cloned {project_path}\n"})
             else:
                 error_msg = stderr.decode() if stderr else "Unknown error"
+                # Mask the token in error messages to prevent leakage
+                error_msg = error_msg.replace(clone_url, masked_url)
                 if callback:
                     await callback({"type": "text", "content": f"Failed to clone {project_path}: {error_msg}\n"})
         except Exception as e:
+            # Mask the token in exception messages to prevent leakage
+            error_str = str(e).replace(clone_url, masked_url)
             if callback:
-                await callback({"type": "text", "content": f"Error cloning {project_path}: {e}\n"})
+                await callback({"type": "text", "content": f"Error cloning {project_path}: {error_str}\n"})
 
     return work_path
 
