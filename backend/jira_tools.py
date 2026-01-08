@@ -206,14 +206,38 @@ class JiraClient:
                 return {"success": True}
             return response.json()
 
-    async def search_issues(self, jql: str, max_results: int = 50, fields: Optional[list] = None) -> dict:
+    async def search_issues(self, jql: str, max_results: int = 50) -> list[dict]:
         """Search for issues using JQL."""
-        body = {
-            "jql": jql,
-            "maxResults": max_results,
-            "fields": fields or ["summary", "status", "issuetype", "priority", "assignee", "description"]
-        }
-        return await self._request("POST", "/search/jql", json=body)
+        data = await self._request(
+            "GET",
+            "/search",
+            params={
+                "jql": jql,
+                "maxResults": max_results,
+                "fields": "summary,status,assignee,priority,issuetype,created,updated"
+            }
+        )
+
+        issues = []
+        for issue in data.get("issues", []):
+            fields = issue.get("fields", {})
+            assignee = fields.get("assignee")
+            issues.append({
+                "key": issue["key"],
+                "summary": fields.get("summary", ""),
+                "status": fields.get("status", {}).get("name", ""),
+                "statusId": fields.get("status", {}).get("id", ""),
+                "statusCategory": fields.get("status", {}).get("statusCategory", {}).get("key", ""),
+                "assignee": assignee.get("displayName") if assignee else None,
+                "assigneeAvatar": assignee.get("avatarUrls", {}).get("24x24") if assignee else None,
+                "priority": fields.get("priority", {}).get("name", ""),
+                "priorityIcon": fields.get("priority", {}).get("iconUrl", ""),
+                "issueType": fields.get("issuetype", {}).get("name", ""),
+                "issueTypeIcon": fields.get("issuetype", {}).get("iconUrl", ""),
+                "created": fields.get("created", ""),
+                "updated": fields.get("updated", "")
+            })
+        return issues
 
     async def get_issue(self, issue_key: str) -> dict:
         """Get a single issue by key."""
@@ -385,18 +409,7 @@ async def jira_search(args: dict) -> dict:
     max_results = args.get("max_results", 20)
 
     try:
-        result = await client.search_issues(jql, max_results)
-        issues = []
-        for issue in result.get("issues", []):
-            fields = issue.get("fields", {})
-            issues.append({
-                "key": issue["key"],
-                "summary": fields.get("summary"),
-                "status": fields.get("status", {}).get("name"),
-                "type": fields.get("issuetype", {}).get("name"),
-                "priority": fields.get("priority", {}).get("name") if fields.get("priority") else None,
-                "assignee": fields.get("assignee", {}).get("displayName") if fields.get("assignee") else None
-            })
+        issues = await client.search_issues(jql, max_results)
 
         res = {
             "content": [

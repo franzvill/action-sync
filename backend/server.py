@@ -349,6 +349,45 @@ async def get_workflow_statuses(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
+@app.get("/api/jira/kanban/{project_key}")
+async def get_kanban_tickets(
+    project_key: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get tickets for Kanban board based on project's JQL filter."""
+    # Get project with its settings
+    result = await db.execute(
+        select(JiraProject).where(
+            JiraProject.user_id == current_user.id,
+            JiraProject.project_key == project_key.upper()
+        )
+    )
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    # Get Jira config
+    result = await db.execute(select(JiraConfig).where(JiraConfig.user_id == current_user.id))
+    jira_config = result.scalar_one_or_none()
+    if not jira_config:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Jira not configured")
+
+    # Build JQL - use custom or default
+    if project.kanban_jql:
+        jql = project.kanban_jql
+    else:
+        jql = f"project = {project_key.upper()} ORDER BY updated DESC"
+
+    client = JiraClient(jira_config.jira_base_url, jira_config.jira_email, jira_config.jira_api_token)
+
+    try:
+        issues = await client.search_issues(jql)
+        return {"issues": issues, "jql": jql}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
 # ============ Meeting Processing Routes ============
 
 @app.get("/api/processing/status")
@@ -445,7 +484,7 @@ async def _process_meeting_task(
         await manager.send_message(user_id, message)
 
     try:
-        print(f"[DEBUG] Calling process_meeting_transcription...")
+        print("[DEBUG] Calling process_meeting_transcription...")
         result = await process_meeting_transcription(
             transcription=transcription,
             project_key=project_key,
@@ -484,10 +523,10 @@ async def _process_meeting_task(
             "success": result["success"],
             "summary": result.get("summary", "")
         })
-        print(f"[DEBUG] Processing completed successfully")
+        print("[DEBUG] Processing completed successfully")
 
     except asyncio.CancelledError:
-        print(f"[DEBUG] Task cancelled")
+        print("[DEBUG] Task cancelled")
         await manager.send_message(user_id, {"type": "aborted"})
     except Exception as e:
         print(f"[DEBUG] Error in processing: {e}")
