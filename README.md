@@ -4,14 +4,13 @@ Transform meeting transcriptions into Jira tickets automatically using Claude AI
 
 ## Features
 
-- **AI-Powered Meeting Processing**: Claude analyzes meeting transcriptions and intelligently creates, updates, and links Jira issues
-- **Question & Answer Mode**: Ask questions about your Jira project with context from meetings and code
-- **User Authentication**: Secure JWT-based authentication with bcrypt password hashing
-- **Jira Integration**: Configure your Jira instance and manage multiple projects
-- **GitLab Integration**: Optionally connect GitLab repositories to provide code context for ticket creation
-- **Meeting History & Semantic Search** (Beta): Store processed meetings with vector embeddings for intelligent search
-- **Real-time Updates**: WebSocket connection for live processing feedback
-- **Per-Project Customization**: Custom instructions, GitLab repos, and embeddings settings per project
+- **Meeting Mode**: Paste a meeting transcript. Claude analyzes it, checks your GitLab repos for technical context, and creates Jira tickets with relevant files, components, acceptance criteria, and links to related issues.
+- **Ask Mode**: Ask questions about your project in natural language. Claude searches across Jira tickets, past meetings, and your codebase to find answers.
+- **Work Mode**: Point Claude at a Jira ticket. It clones the relevant repos, reads the ticket and codebase, and works on the implementation.
+- **GitLab Integration**: Connect GitLab repositories to provide code context for ticket creation and AI work.
+- **Meeting History & Semantic Search**: Store processed meetings with vector embeddings for intelligent search.
+- **Real-time Updates**: WebSocket connection for live processing feedback.
+- **Per-Project Customization**: Custom instructions, GitLab repos, and settings per project.
 
 ## Architecture
 
@@ -37,17 +36,17 @@ Jira REST API + GitLab API
 
 ### Using Docker Compose (Recommended)
 
-1. Create a `.env` file in the root directory:
-   ```env
-   # Required
-   SECRET_KEY=your-secure-secret-key
-   AZURE_ANTHROPIC_ENDPOINT=your-azure-anthropic-endpoint
-   AZURE_ANTHROPIC_API_KEY=your-azure-anthropic-api-key
-
-   # Optional - for meeting history/semantic search
-   AZURE_OPENAI_ENDPOINT=your-azure-openai-endpoint
-   AZURE_OPENAI_API_KEY=your-azure-openai-api-key
+1. Copy the example environment file and configure it:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your values
    ```
+
+   Required variables:
+   - `POSTGRES_PASSWORD` - Database password
+   - `SECRET_KEY` - JWT signing secret
+   - `AZURE_ANTHROPIC_ENDPOINT` - Azure Anthropic API endpoint
+   - `AZURE_ANTHROPIC_API_KEY` - Azure Anthropic API key
 
 2. Start the application:
    ```bash
@@ -106,14 +105,22 @@ In Settings, add Jira project keys (e.g., `PROJ`, `DEV`, `SUPPORT`) with optiona
 5. Watch Claude analyze and create/update tickets in real-time
 6. View results with links to created tickets
 
-### Question Mode
+### Ask Mode
 
-1. Go to Dashboard and select "Question" mode
+1. Go to Dashboard and select "Ask" mode
 2. Select a project
 3. Ask a question about your project
-4. Claude will search Jira, meeting history, and code (if configured) to provide answers
+4. Claude searches Jira, meeting history, and code to provide answers
 
-### Meeting History (Beta)
+### Work Mode
+
+1. Go to Dashboard and select "Work" mode
+2. Select a project
+3. Enter a Jira ticket key (e.g., `PROJ-123`)
+4. Claude clones the configured GitLab repos, reads the ticket, and starts working
+5. Watch progress in real-time as Claude analyzes code and implements changes
+
+### Meeting History
 
 1. Go to History to view past processed meetings
 2. Use search to find meetings by content
@@ -165,6 +172,7 @@ In Settings, add Jira project keys (e.g., `PROJ`, `DEV`, `SUPPORT`) with optiona
 |----------|--------|-------------|
 | `/api/meetings/process` | POST | Process meeting transcription |
 | `/api/jira/ask` | POST | Ask a question about the project |
+| `/api/work/start` | POST | Start working on a Jira ticket |
 | `/api/processing/status` | GET | Check processing status |
 | `/api/processing/abort` | POST | Cancel current processing |
 
@@ -192,14 +200,6 @@ docker build -t actionsync .
 docker run -p 8080:8080 --env-file .env actionsync
 ```
 
-### OpenShift
-
-Deployment manifests are provided in the `openshift/` directory:
-- PostgreSQL StatefulSet with persistent storage
-- Application Deployment with health checks
-- Service and Route configuration
-- Secrets management for credentials
-
 ## Tech Stack
 
 - **Python 3.12** with FastAPI
@@ -207,4 +207,4 @@ Deployment manifests are provided in the `openshift/` directory:
 - **Claude AI** via Azure Anthropic
 - **Azure OpenAI** for embeddings
 - **Vanilla JavaScript** SPA frontend
-- **Docker** & **OpenShift** deployment support
+- **Docker** deployment support
