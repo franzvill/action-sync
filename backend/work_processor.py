@@ -25,6 +25,8 @@ async def clone_repos_for_work(
     gitlab_token: str,
     project_paths: List[str],
     issue_key: str,
+    git_author_name: str = "ActionSync AI",
+    git_author_email: str = "actionsync@example.com",
     callback: Optional[Callable[[dict[str, Any]], Coroutine[Any, Any, None]]] = None
 ) -> Path:
     """
@@ -67,6 +69,15 @@ async def clone_repos_for_work(
                 continue
 
             if process.returncode == 0:
+                # Configure git author for this repo
+                await asyncio.create_subprocess_exec(
+                    "git", "config", "user.name", git_author_name,
+                    cwd=str(target_dir)
+                )
+                await asyncio.create_subprocess_exec(
+                    "git", "config", "user.email", git_author_email,
+                    cwd=str(target_dir)
+                )
                 if callback:
                     await callback({"type": "text", "content": f"Cloned {project_path}\n"})
             else:

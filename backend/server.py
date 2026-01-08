@@ -521,11 +521,15 @@ async def _work_ticket_task(
         # Clone repositories
         print(f"[WORK DEBUG] Cloning repositories...")
         project_list = [p.strip() for p in gitlab_projects.split(",") if p.strip()]
+        # Use Jira email for git author
+        git_author_name = jira_email.split("@")[0].replace(".", " ").title()
         work_dir = await clone_repos_for_work(
             gitlab_url=gitlab_url,
             gitlab_token=gitlab_token,
             project_paths=project_list,
             issue_key=issue_key,
+            git_author_name=git_author_name,
+            git_author_email=jira_email,
             callback=message_callback
         )
         print(f"[WORK DEBUG] Cloning complete, work_dir={work_dir}")
