@@ -594,6 +594,8 @@ function renderHeader() {
 
 function renderInputPanel() {
     const isMeetingMode = state.mode === 'meeting';
+    const isQuestionMode = state.mode === 'question';
+    const isWorkMode = state.mode === 'work';
 
     const projectPills = state.projects.map(p => `
         <button class="project-pill ${state.selectedProject === p.project_key ? 'active' : ''}"
@@ -609,8 +611,8 @@ function renderInputPanel() {
     return `
         <div class="input-panel-centered">
             <div class="input-panel-header">
-                <h1 class="input-panel-title">${isMeetingMode ? 'Process Meeting' : 'Ask Question'}</h1>
-                <p class="input-panel-subtitle">${isMeetingMode ? 'Paste your meeting transcription to create Jira tickets' : 'Ask anything about your Jira project'}</p>
+                <h1 class="input-panel-title">${isMeetingMode ? 'Process Meeting' : isWorkMode ? 'Work Mode' : 'Ask Question'}</h1>
+                <p class="input-panel-subtitle">${isMeetingMode ? 'Paste your meeting transcription to create Jira tickets' : isWorkMode ? 'Select a ticket to start working on' : 'Ask anything about your Jira project'}</p>
             </div>
 
             <div class="mode-selector-centered">
@@ -618,9 +620,13 @@ function renderInputPanel() {
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
                     Meeting
                 </button>
-                <button class="mode-btn ${!isMeetingMode ? 'active' : ''}" onclick="setMode('question')">
+                <button class="mode-btn ${isQuestionMode ? 'active' : ''}" onclick="setMode('question')">
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                     Ask
+                </button>
+                <button class="mode-btn ${isWorkMode ? 'active' : ''}" onclick="setMode('work')">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+                    Work
                 </button>
             </div>
 
@@ -733,6 +739,50 @@ function renderOutputStage() {
                     </div>
                 </div>
                 ${renderResultsPanel()}
+            </main>
+        `;
+    }
+
+    // Show work mode views
+    if (state.mode === 'work') {
+        let mainContent;
+        if (state.workMode === 'kanban') {
+            mainContent = renderKanban();
+        } else if (state.workMode === 'detail') {
+            mainContent = renderTicketDetail();
+        } else if (state.workMode === 'working') {
+            mainContent = renderProcessingConsole();
+        }
+        return `
+            <main class="output-stage work-mode">
+                <div class="work-header">
+                    <div class="mode-selector-centered">
+                        <button class="mode-btn" onclick="setMode('meeting')">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                            Meeting
+                        </button>
+                        <button class="mode-btn" onclick="setMode('question')">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            Ask
+                        </button>
+                        <button class="mode-btn active" onclick="setMode('work')">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+                            Work
+                        </button>
+                    </div>
+                    <div class="project-selector-centered">
+                        <div class="section-label">Project</div>
+                        <div class="project-grid">
+                            ${state.projects.map(p => `
+                                <button class="project-pill ${state.selectedProject === p.project_key ? 'active' : ''}"
+                                        onclick="selectProject('${p.project_key}'); setMode('work');">
+                                    ${escapeHtml(p.project_key)}
+                                </button>
+                            `).join('') || '<span class="text-muted">No projects</span>'}
+                        </div>
+                    </div>
+                </div>
+                ${mainContent}
             </main>
         `;
     }
@@ -1082,6 +1132,144 @@ function handleSearchKeyup(event) {
     }
 }
 
+function renderKanban() {
+    if (state.workTicketsLoading) {
+        return '<div class="loading">Loading tickets...</div>';
+    }
+
+    if (state.workStatuses.length === 0) {
+        return '<div class="empty-state">No workflow statuses found. Configure a project first.</div>';
+    }
+
+    // Group tickets by status
+    const ticketsByStatus = {};
+    state.workStatuses.forEach(s => ticketsByStatus[s.id] = []);
+    state.workTickets.forEach(t => {
+        if (ticketsByStatus[t.statusId]) {
+            ticketsByStatus[t.statusId].push(t);
+        }
+    });
+
+    const columns = state.workStatuses.map(status => `
+        <div class="kanban-column" data-status="${status.id}">
+            <div class="kanban-column-header">
+                <span class="status-name">${status.name}</span>
+                <span class="status-count">${ticketsByStatus[status.id].length}</span>
+            </div>
+            <div class="kanban-cards">
+                ${ticketsByStatus[status.id].map(ticket => `
+                    <div class="kanban-card" onclick="loadTicketDetails('${ticket.key}')">
+                        <div class="ticket-key">${ticket.key}</div>
+                        <div class="ticket-summary">${escapeHtml(ticket.summary)}</div>
+                        <div class="ticket-meta">
+                            ${ticket.priorityIcon ? `<img src="${ticket.priorityIcon}" class="priority-icon" alt="${ticket.priority}">` : ''}
+                            ${ticket.issueTypeIcon ? `<img src="${ticket.issueTypeIcon}" class="type-icon" alt="${ticket.issueType}">` : ''}
+                            ${ticket.assigneeAvatar ? `<img src="${ticket.assigneeAvatar}" class="assignee-avatar" alt="${ticket.assignee}">` : ''}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `).join('');
+
+    return `<div class="kanban-board">${columns}</div>`;
+}
+
+function renderTicketDetail() {
+    if (state.selectedTicketLoading) {
+        return '<div class="loading">Loading ticket...</div>';
+    }
+
+    const ticket = state.selectedTicket;
+    if (!ticket) {
+        return '<div class="error">Ticket not found</div>';
+    }
+
+    const project = state.projects.find(p => p.project_key === state.selectedProject);
+
+    return `
+        <div class="ticket-detail-panel">
+            <div class="ticket-detail-header">
+                <button class="back-btn" onclick="state.workMode = 'kanban'; state.selectedTicket = null; render();">
+                    ← Back to Board
+                </button>
+                <div class="ticket-key-large">${ticket.key}</div>
+            </div>
+
+            <h2 class="ticket-title">${escapeHtml(ticket.summary)}</h2>
+
+            <div class="ticket-metadata">
+                <div class="meta-item"><strong>Status:</strong> ${ticket.status}</div>
+                <div class="meta-item"><strong>Priority:</strong> ${ticket.priority || 'None'}</div>
+                <div class="meta-item"><strong>Type:</strong> ${ticket.issueType}</div>
+                <div class="meta-item"><strong>Assignee:</strong> ${ticket.assignee || 'Unassigned'}</div>
+            </div>
+
+            <div class="ticket-description">
+                <h3>Description</h3>
+                <div class="description-content">
+                    ${ticket.descriptionHtml || '<em>No description</em>'}
+                </div>
+            </div>
+
+            <div class="ticket-comments">
+                <h3>Comments (${ticket.comments.length})</h3>
+                ${ticket.comments.length === 0 ? '<em>No comments</em>' : ticket.comments.map(c => `
+                    <div class="comment">
+                        <div class="comment-header">
+                            ${c.authorAvatar ? `<img src="${c.authorAvatar}" class="comment-avatar">` : ''}
+                            <strong>${escapeHtml(c.author)}</strong>
+                            <span class="comment-date">${new Date(c.created).toLocaleDateString()}</span>
+                        </div>
+                        <div class="comment-body">${typeof c.body === 'string' ? escapeHtml(c.body) : '<em>Rich content</em>'}</div>
+                    </div>
+                `).join('')}
+            </div>
+
+            <div class="ticket-actions">
+                <button class="btn-primary btn-large" onclick="startWork(${project?.id}, '${ticket.key}')" ${!project?.gitlab_projects ? 'disabled title="Configure GitLab repos first"' : ''}>
+                    Start Work
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+function renderProcessingConsole() {
+    return `
+        <div class="processing-console">
+            <div class="status-bar">
+                <div class="status-indicator">
+                    <div class="status-dot active"></div>
+                    <span class="status-text">Starting work...</span>
+                </div>
+                <div class="status-actions">
+                    <button class="btn btn-danger btn-sm" onclick="handleAbort()">
+                        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        Stop
+                    </button>
+                </div>
+            </div>
+            <div class="live-console">
+                <div class="console-header">
+                    <div class="console-dots">
+                        <div class="console-dot red"></div>
+                        <div class="console-dot yellow"></div>
+                        <div class="console-dot green"></div>
+                    </div>
+                    <span class="console-title">work output</span>
+                </div>
+                <div class="console-body" id="console-output">
+                    <div class="console-line">
+                        <span class="console-prompt">></span>
+                        <span class="console-text thinking">Preparing workspace...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
 function renderDashboard() {
     return `
         <div class="app-layout">
@@ -1103,6 +1291,11 @@ function selectProject(key) {
 function setMode(mode) {
     state.mode = mode;
     state.lastResult = null;
+    if (mode === 'work' && state.selectedProject) {
+        state.workMode = 'kanban';
+        loadWorkflowStatuses(state.selectedProject);
+        loadKanbanTickets(state.selectedProject);
+    }
     render();
 }
 
