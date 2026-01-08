@@ -507,16 +507,19 @@ async def _work_ticket_task(
     """Background task for AI ticket work."""
 
     async def message_callback(message: dict):
+        print(f"[WORK DEBUG] Sending message: {message.get('type')}")
         await manager.send_message(user_id, message)
 
     try:
         # Get full ticket details
+        print(f"[WORK DEBUG] Starting work on {issue_key}")
         await message_callback({"type": "text", "content": f"Fetching ticket {issue_key}...\n"})
         client = JiraClient(jira_base_url, jira_email, jira_api_token)
         ticket = await client.get_issue_full(issue_key)
         await message_callback({"type": "text", "content": f"Ticket: {ticket['summary']}\n\n"})
 
         # Clone repositories
+        print(f"[WORK DEBUG] Cloning repositories...")
         project_list = [p.strip() for p in gitlab_projects.split(",") if p.strip()]
         work_dir = await clone_repos_for_work(
             gitlab_url=gitlab_url,
@@ -525,8 +528,10 @@ async def _work_ticket_task(
             issue_key=issue_key,
             callback=message_callback
         )
+        print(f"[WORK DEBUG] Cloning complete, work_dir={work_dir}")
 
         await message_callback({"type": "text", "content": "\nStarting AI work...\n\n"})
+        print(f"[WORK DEBUG] Invoking Claude...")
 
         # Process the ticket
         result = await process_work_ticket(

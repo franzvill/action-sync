@@ -54,11 +54,17 @@ async def clone_repos_for_work(
 
         try:
             process = await asyncio.create_subprocess_exec(
-                "git", "clone", clone_url, str(target_dir),
+                "git", "clone", "--depth", "1", clone_url, str(target_dir),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            stdout, stderr = await process.communicate()
+            try:
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=120)
+            except asyncio.TimeoutError:
+                process.kill()
+                if callback:
+                    await callback({"type": "text", "content": f"Timeout cloning {project_path} (120s exceeded)\n"})
+                continue
 
             if process.returncode == 0:
                 if callback:
