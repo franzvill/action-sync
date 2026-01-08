@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: meeting_jira
+      POSTGRES_PASSWORD: meeting_jira_secret
+      POSTGRES_DB: meeting_jira
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U meeting_jira"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  meeting-jira:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://meeting_jira:meeting_jira_secret@postgres:5432/meeting_jira
+      - SECRET_KEY=${SECRET_KEY:-change-this-in-production}
+      - AZURE_ANTHROPIC_ENDPOINT=${AZURE_ANTHROPIC_ENDPOINT}
+      - AZURE_ANTHROPIC_API_KEY=${AZURE_ANTHROPIC_API_KEY}
+      - AZURE_ANTHROPIC_MODEL=${AZURE_ANTHROPIC_MODEL:-claude-sonnet-4-20250514}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  postgres_data:

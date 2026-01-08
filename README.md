@@ -1,93 +1,210 @@
-# Action Sync
+# ActionSync
 
+Transform meeting transcriptions into Jira tickets automatically using Claude AI.
 
+## Features
 
-## Getting started
+- **AI-Powered Meeting Processing**: Claude analyzes meeting transcriptions and intelligently creates, updates, and links Jira issues
+- **Question & Answer Mode**: Ask questions about your Jira project with context from meetings and code
+- **User Authentication**: Secure JWT-based authentication with bcrypt password hashing
+- **Jira Integration**: Configure your Jira instance and manage multiple projects
+- **GitLab Integration**: Optionally connect GitLab repositories to provide code context for ticket creation
+- **Meeting History & Semantic Search** (Beta): Store processed meetings with vector embeddings for intelligent search
+- **Real-time Updates**: WebSocket connection for live processing feedback
+- **Per-Project Customization**: Custom instructions, GitLab repos, and embeddings settings per project
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
-
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
+## Architecture
 
 ```
-cd existing_repo
-git remote add origin https://gitlab.devops.msccruises.com/ai/action-sync.git
-git branch -M master
-git push -uf origin master
+Frontend (Vanilla JavaScript SPA)
+    ↓
+FastAPI Backend (Python/Async)
+    ↓
+PostgreSQL Database (with pgvector)
+    ↓
+Claude AI (via Azure Anthropic API)
+    ↓
+Jira REST API + GitLab API
 ```
 
-## Integrate with your tools
+- **Backend**: FastAPI with async SQLAlchemy (PostgreSQL/SQLite)
+- **Frontend**: Vanilla JavaScript SPA with modern dark theme
+- **AI**: Claude via Azure Anthropic with MCP tools for Jira operations
+- **Embeddings**: Azure OpenAI for semantic search (optional)
+- **Auth**: JWT tokens with bcrypt password hashing
 
-- [ ] [Set up project integrations](https://gitlab.devops.msccruises.com/ai/action-sync/-/settings/integrations)
+## Quick Start
 
-## Collaborate with your team
+### Using Docker Compose (Recommended)
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+1. Create a `.env` file in the root directory:
+   ```env
+   # Required
+   SECRET_KEY=your-secure-secret-key
+   AZURE_ANTHROPIC_ENDPOINT=your-azure-anthropic-endpoint
+   AZURE_ANTHROPIC_API_KEY=your-azure-anthropic-api-key
 
-## Test and Deploy
+   # Optional - for meeting history/semantic search
+   AZURE_OPENAI_ENDPOINT=your-azure-openai-endpoint
+   AZURE_OPENAI_API_KEY=your-azure-openai-api-key
+   ```
 
-Use the built-in continuous integration in GitLab.
+2. Start the application:
+   ```bash
+   docker-compose up -d
+   ```
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+3. Access at http://localhost:8080
 
-***
+### Manual Setup
 
-# Editing this README
+1. Install Python dependencies:
+   ```bash
+   cd backend
+   pip install -r requirements.txt
+   ```
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+2. Set environment variables (see [Environment Variables](#environment-variables))
 
-## Suggestions for a good README
+3. Run the server:
+   ```bash
+   python server.py
+   ```
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+## Configuration
 
-## Name
-Choose a self-explaining name for your project.
+### Jira Setup
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+1. Create an API token at https://id.atlassian.com/manage-profile/security/api-tokens
+2. In the app Settings, enter:
+   - Jira Base URL (e.g., `https://yourcompany.atlassian.net`)
+   - Your Jira email
+   - The API token you created
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+### GitLab Setup (Optional)
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+1. Create a Personal Access Token in GitLab with `read_repository` scope
+2. In Settings, enter:
+   - GitLab URL (e.g., `https://gitlab.com`)
+   - Personal Access Token
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+### Adding Projects
+
+In Settings, add Jira project keys (e.g., `PROJ`, `DEV`, `SUPPORT`) with optional configuration:
+- **GitLab Projects**: Comma-separated repository paths to clone for code context
+- **Custom Instructions**: Additional guidance for Claude when processing meetings
+- **Embeddings Enabled**: Toggle meeting history storage for semantic search
 
 ## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+### Meeting Processing Mode
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+1. Go to Dashboard and select "Meeting" mode
+2. Select a project
+3. Paste your meeting transcription
+4. Click "Process Meeting"
+5. Watch Claude analyze and create/update tickets in real-time
+6. View results with links to created tickets
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+### Question Mode
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+1. Go to Dashboard and select "Question" mode
+2. Select a project
+3. Ask a question about your project
+4. Claude will search Jira, meeting history, and code (if configured) to provide answers
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+### Meeting History (Beta)
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+1. Go to History to view past processed meetings
+2. Use search to find meetings by content
+3. Click on a meeting to view details and summary
 
-## License
-For open source projects, say how it is licensed.
+## Environment Variables
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SECRET_KEY` | Yes | JWT signing secret (change in production) |
+| `AZURE_ANTHROPIC_ENDPOINT` | Yes | Azure Anthropic API endpoint |
+| `AZURE_ANTHROPIC_API_KEY` | Yes | Azure Anthropic API key |
+| `AZURE_ANTHROPIC_MODEL` | No | Claude model (default: `claude-opus-4-5`) |
+| `DATABASE_URL` | No | Database connection string (default: SQLite) |
+| `AZURE_OPENAI_ENDPOINT` | No | Azure OpenAI endpoint (for embeddings) |
+| `AZURE_OPENAI_API_KEY` | No | Azure OpenAI API key (for embeddings) |
+| `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | No | Embedding model (default: `text-embedding-3-small`) |
+
+## API Endpoints
+
+### Authentication
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/auth/register` | POST | Create account |
+| `/api/auth/login` | POST | Login (returns JWT) |
+| `/api/auth/me` | GET | Get current user |
+
+### Jira Configuration
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/jira/config` | GET | Get Jira config |
+| `/api/jira/config` | POST | Create Jira config |
+| `/api/jira/config` | PUT | Update Jira config |
+
+### Projects
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/jira/projects` | GET | List projects |
+| `/api/jira/projects` | POST | Add project |
+| `/api/jira/projects/{id}` | PUT | Update project settings |
+| `/api/jira/projects/{id}` | DELETE | Remove project |
+
+### Processing
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/meetings/process` | POST | Process meeting transcription |
+| `/api/jira/ask` | POST | Ask a question about the project |
+| `/api/processing/status` | GET | Check processing status |
+| `/api/processing/abort` | POST | Cancel current processing |
+
+### Meeting History
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/meetings` | GET | List meetings (paginated) |
+| `/api/meetings/{id}` | GET | Get meeting details |
+| `/api/meetings/{id}` | DELETE | Delete meeting |
+| `/api/meetings/search` | POST | Semantic search across meetings |
+
+### Real-time
+
+| Endpoint | Type | Description |
+|----------|------|-------------|
+| `/ws?token={jwt}` | WebSocket | Real-time processing updates |
+
+## Deployment
+
+### Docker
+
+```bash
+docker build -t actionsync .
+docker run -p 8080:8080 --env-file .env actionsync
+```
+
+### OpenShift
+
+Deployment manifests are provided in the `openshift/` directory:
+- PostgreSQL StatefulSet with persistent storage
+- Application Deployment with health checks
+- Service and Route configuration
+- Secrets management for credentials
+
+## Tech Stack
+
+- **Python 3.12** with FastAPI
+- **PostgreSQL 16** with pgvector extension
+- **Claude AI** via Azure Anthropic
+- **Azure OpenAI** for embeddings
+- **Vanilla JavaScript** SPA frontend
+- **Docker** & **OpenShift** deployment support
