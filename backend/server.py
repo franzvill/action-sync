@@ -453,7 +453,7 @@ async def start_work(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
     # Verify issue belongs to project
-    if not work_data.issue_key.upper().startswith(project.project_key):
+    if not work_data.issue_key.upper().startswith(f"{project.project_key}-"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Issue does not belong to this project")
 
     # Get Jira config
