@@ -388,6 +388,45 @@ async def get_kanban_tickets(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
+@app.get("/api/jira/ticket/{issue_key}")
+async def get_ticket_details(
+    issue_key: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get full ticket details for the work panel."""
+    # Validate issue key format (e.g., PROJ-123)
+    if "-" not in issue_key or not issue_key.split("-")[1].isdigit():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid issue key format")
+
+    # Extract project key from issue key
+    project_key = issue_key.split("-")[0].upper()
+
+    # Verify user has this project
+    result = await db.execute(
+        select(JiraProject).where(
+            JiraProject.user_id == current_user.id,
+            JiraProject.project_key == project_key
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    # Get Jira config
+    result = await db.execute(select(JiraConfig).where(JiraConfig.user_id == current_user.id))
+    jira_config = result.scalar_one_or_none()
+    if not jira_config:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Jira not configured")
+
+    client = JiraClient(jira_config.jira_base_url, jira_config.jira_email, jira_config.jira_api_token)
+
+    try:
+        ticket = await client.get_issue_full(issue_key)
+        return ticket
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
 # ============ Meeting Processing Routes ============
 
 @app.get("/api/processing/status")

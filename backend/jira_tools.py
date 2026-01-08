@@ -243,6 +243,52 @@ class JiraClient:
         """Get a single issue by key."""
         return await self._request("GET", f"/issue/{issue_key}")
 
+    async def get_issue_full(self, issue_key: str) -> dict:
+        """Get full issue details including description and comments."""
+        data = await self._request(
+            "GET",
+            f"/issue/{issue_key}",
+            params={"expand": "renderedFields"}
+        )
+
+        fields = data.get("fields", {})
+        rendered = data.get("renderedFields", {})
+        assignee = fields.get("assignee")
+        reporter = fields.get("reporter")
+
+        # Get comments
+        comments = []
+        for comment in fields.get("comment", {}).get("comments", []):
+            author = comment.get("author", {})
+            comments.append({
+                "id": comment.get("id", ""),
+                "body": comment.get("body", ""),
+                "author": author.get("displayName", "Unknown"),
+                "authorAvatar": author.get("avatarUrls", {}).get("24x24"),
+                "created": comment.get("created", "")
+            })
+
+        return {
+            "key": data["key"],
+            "summary": fields.get("summary", ""),
+            "description": fields.get("description"),  # ADF format
+            "descriptionHtml": rendered.get("description", ""),  # Rendered HTML
+            "status": fields.get("status", {}).get("name", ""),
+            "statusId": fields.get("status", {}).get("id", ""),
+            "statusCategory": fields.get("status", {}).get("statusCategory", {}).get("key", ""),
+            "priority": fields.get("priority", {}).get("name", ""),
+            "priorityIcon": fields.get("priority", {}).get("iconUrl", ""),
+            "issueType": fields.get("issuetype", {}).get("name", ""),
+            "issueTypeIcon": fields.get("issuetype", {}).get("iconUrl", ""),
+            "assignee": assignee.get("displayName") if assignee else None,
+            "assigneeAvatar": assignee.get("avatarUrls", {}).get("24x24") if assignee else None,
+            "reporter": reporter.get("displayName") if reporter else None,
+            "created": fields.get("created", ""),
+            "updated": fields.get("updated", ""),
+            "labels": fields.get("labels", []),
+            "comments": comments
+        }
+
     async def create_issue(
         self,
         project_key: str,
