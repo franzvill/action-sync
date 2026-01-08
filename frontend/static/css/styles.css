@@ -2226,6 +2226,26 @@ a.action-card:hover .action-key {
 }
 
 /* =====================================================
+   Work Mode Layout
+   ===================================================== */
+
+.output-stage.work-mode {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.output-stage.work-mode > .work-header {
+    flex-shrink: 0;
+}
+
+.output-stage.work-mode > .ticket-detail-panel,
+.output-stage.work-mode > .kanban-board {
+    flex: 1;
+    min-height: 0;
+}
+
+/* =====================================================
    Kanban Board
    ===================================================== */
 
@@ -2325,6 +2345,10 @@ a.action-card:hover .action-key {
 .ticket-detail-panel {
     max-width: 800px;
     margin: 0 auto;
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+    padding-bottom: 2rem;
 }
 
 .ticket-detail-header {
