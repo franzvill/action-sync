@@ -189,7 +189,6 @@ git push -o merge_request.create -o merge_request.target=main origin <branch-nam
 4. **Create a new branch from main/master**:
    - The repos are freshly cloned on the default branch (main/master)
    - Create your feature branch: `git checkout -b feature/<ticket-key>-short-description`
-   - Example: `git checkout -b feature/{ticket['key']}-add-user-auth`
 
 5. **Implement the changes** required by the ticket
 
