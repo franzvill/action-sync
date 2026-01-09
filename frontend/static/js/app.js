@@ -17,6 +17,8 @@ const state = {
     pendingActions: [],  // Queue of pending Jira actions (for parallel tool calls)
     actions: [],
     logs: [],  // Store console logs for display after processing
+    sessionId: null,  // Current conversation session ID
+    conversationMessages: [],  // Array of {role: 'user'|'assistant', content: string}
     // History state
     meetings: [],
     meetingsLoading: false,
@@ -31,7 +33,20 @@ const state = {
     workTicketsLoading: false,
     selectedTicket: null,
     selectedTicketLoading: false,
+    // Live Ask state
+    liveAsk: {
+        enabled: false,
+        status: 'idle', // 'idle' | 'loading' | 'listening' | 'transcribing' | 'processing'
+        modelLoaded: false,
+        modelLoading: false,
+        modelProgress: 0,
+        lastTranscription: '',
+        error: null,
+    },
 };
+
+// Live Ask controller instance (lazy loaded)
+let liveAskController = null;
 
 // =====================================================
 // API Client
@@ -298,16 +313,30 @@ async function processMeeting(transcription, projectKey) {
     });
 }
 
-async function askQuestion(question, projectKey) {
+async function askQuestion(question, projectKey, isFollowUp = false) {
     state.isProcessing = true;
     state.actions = [];
     state.pendingActions = [];
-    state.lastResult = null;
     state.logs = [];
+
+    // For new questions, clear the session and conversation
+    if (!isFollowUp) {
+        state.sessionId = null;
+        state.conversationMessages = [];
+        state.lastResult = null;
+    }
+
+    // Add user message to conversation
+    state.conversationMessages.push({ role: 'user', content: question });
+
     render();
     await api('/jira/ask', {
         method: 'POST',
-        body: JSON.stringify({ question, project_key: projectKey })
+        body: JSON.stringify({
+            question,
+            project_key: projectKey,
+            session_id: isFollowUp ? state.sessionId : null
+        })
     });
 }
 
@@ -317,6 +346,184 @@ async function abortProcessing() {
     } catch (e) {
         showToast(e.message, 'error');
     }
+}
+
+// =====================================================
+// Live Ask Mode
+// =====================================================
+
+async function initLiveAsk() {
+    if (liveAskController) return liveAskController;
+
+    // Dynamically import the controller
+    const { LiveAskController } = await import('/static/js/live-ask/live-ask-controller.js');
+
+    liveAskController = new LiveAskController({
+        onStatusChange: (status) => {
+            state.liveAsk.status = status;
+            render();
+        },
+        onModelProgress: (progress) => {
+            state.liveAsk.modelProgress = progress.progress;
+            state.liveAsk.modelLoading = progress.status === 'downloading';
+            state.liveAsk.modelLoaded = progress.status === 'ready';
+            render();
+        },
+        onTranscription: (text) => {
+            state.liveAsk.lastTranscription = text;
+            console.log('Live Ask transcription:', text);
+            render();
+        },
+        onError: (error) => {
+            state.liveAsk.error = error?.message || String(error);
+            showToast(`Live Ask error: ${state.liveAsk.error}`, 'error');
+            render();
+        },
+    });
+
+    // Set the handler to call askQuestion
+    liveAskController.setAskQuestionHandler(async (question) => {
+        if (!state.selectedProject) {
+            showToast('Please select a project first', 'error');
+            return;
+        }
+
+        // Check if this is a follow-up (we have an existing result with a session)
+        const isFollowUp = state.lastResult && state.sessionId;
+
+        if (!isFollowUp) {
+            // New question - switch to question mode
+            state.mode = 'question';
+            render();
+            // Small delay to let render complete
+            await new Promise(r => setTimeout(r, 100));
+            const inputEl = document.getElementById('input-text');
+            if (inputEl) inputEl.value = question;
+        }
+
+        // Submit the question
+        await askQuestion(question, state.selectedProject, isFollowUp);
+    });
+
+    return liveAskController;
+}
+
+// Click to start/stop recording
+async function toggleLiveAskRecording() {
+    try {
+        const controller = await initLiveAsk();
+
+        // If already recording, stop
+        if (state.liveAsk.status === 'recording') {
+            await controller.stopRecording();
+            return;
+        }
+
+        // Check prerequisites
+        if (!state.selectedProject) {
+            showToast('Please select a project first', 'error');
+            return;
+        }
+
+        // Check browser support
+        const { LiveAskController } = await import('/static/js/live-ask/live-ask-controller.js');
+        const supportInfo = LiveAskController.getSupportInfo();
+
+        if (!supportInfo.isSupported) {
+            showToast(`Live Ask not supported: ${supportInfo.reason}`, 'error');
+            return;
+        }
+
+        // Start recording
+        state.liveAsk.lastTranscription = '';
+        state.liveAsk.error = null;
+        await controller.startRecording();
+
+    } catch (error) {
+        const errorMsg = error?.message || String(error);
+        state.liveAsk.error = errorMsg;
+        showToast(`Live Ask error: ${errorMsg}`, 'error');
+        console.error('Live Ask error:', error);
+        render();
+    }
+}
+
+// Make function available globally
+window.toggleLiveAskRecording = toggleLiveAskRecording;
+
+function renderLiveAskButton() {
+    const { status, modelProgress } = state.liveAsk;
+    const isLoading = status === 'loading';
+    const isRecording = status === 'recording';
+    const isTranscribing = status === 'transcribing';
+    const isProcessing = status === 'processing';
+    const isBusy = isLoading || isTranscribing || isProcessing;
+
+    let buttonText = 'Voice';
+    let statusClass = status || 'idle';
+
+    if (isLoading) {
+        buttonText = `Loading ${modelProgress}%`;
+    } else if (isRecording) {
+        buttonText = 'Stop';
+    } else if (isTranscribing) {
+        buttonText = 'Transcribing...';
+    } else if (isProcessing) {
+        buttonText = 'Processing...';
+    }
+
+    return `
+        <button class="btn btn-lg live-ask-btn ${statusClass}"
+                onclick="toggleLiveAskRecording()"
+                ${isBusy || state.isProcessing ? 'disabled' : ''}>
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/>
+            </svg>
+            ${buttonText}
+        </button>
+    `;
+}
+
+function renderLiveAskTranscription() {
+    const { status, lastTranscription, error } = state.liveAsk;
+
+    // Show when recording, processing, or has recent transcription
+    const isActive = ['loading', 'recording', 'transcribing', 'processing'].includes(status);
+    if (!isActive && !lastTranscription && !error) return '';
+
+    const statusText = {
+        'idle': 'Ready',
+        'loading': 'Loading model...',
+        'recording': 'Recording...',
+        'transcribing': 'Transcribing...',
+        'processing': 'Processing question...',
+    }[status] || '';
+
+    let content = '';
+    if (error) {
+        content = `<div class="live-ask-transcription-text error">Error: ${escapeHtml(error)}</div>`;
+    } else if (lastTranscription) {
+        content = `<div class="live-ask-transcription-text">"${escapeHtml(lastTranscription)}"</div>`;
+    } else if (status === 'loading') {
+        content = `<div class="live-ask-transcription-text muted">Loading Whisper model (first time may take a minute)...</div>`;
+    } else if (status === 'recording') {
+        content = `<div class="live-ask-transcription-text muted">Listening... Click mic button to stop.</div>`;
+    } else if (status === 'transcribing') {
+        content = `<div class="live-ask-transcription-text muted">Transcribing your question...</div>`;
+    } else if (status === 'processing') {
+        content = `<div class="live-ask-transcription-text muted">Asking Claude...</div>`;
+    }
+
+    return `
+        <div class="live-ask-transcription">
+            <div class="live-ask-transcription-header">
+                <span class="live-ask-status-indicator ${status}"></span>
+                <span>${statusText}</span>
+            </div>
+            ${content}
+        </div>
+    `;
 }
 
 // =====================================================
@@ -355,16 +562,33 @@ function handleWsMessage(data) {
         state.pendingActions = [];
 
         if (data.type === 'complete' && data.success) {
+            const answerContent = state.mode === 'question' ? data.answer : data.summary;
+
+            // Add assistant message to conversation
+            if (state.mode === 'question' && answerContent) {
+                state.conversationMessages.push({ role: 'assistant', content: answerContent });
+            }
+
             state.lastResult = {
                 mode: state.mode,
-                content: state.mode === 'question' ? data.answer : data.summary,
+                content: answerContent,
                 actions: [...state.actions],
                 logs: [...state.logs],
                 success: true
             };
+
+            // Store session_id for follow-up questions
+            if (state.mode === 'question' && data.session_id) {
+                state.sessionId = data.session_id;
+            }
+
             showToast(state.mode === 'question' ? 'Answer ready' : 'Processing complete', 'success');
         } else if (data.type === 'aborted') {
             state.lastResult = null;
+            // Remove the last user message if aborted
+            if (state.conversationMessages.length > 0 && state.conversationMessages[state.conversationMessages.length - 1].role === 'user') {
+                state.conversationMessages.pop();
+            }
             showToast('Aborted', 'info');
         } else {
             state.lastResult = {
@@ -373,6 +597,10 @@ function handleWsMessage(data) {
                 logs: [...state.logs],
                 success: false
             };
+            // Remove the last user message on error
+            if (state.conversationMessages.length > 0 && state.conversationMessages[state.conversationMessages.length - 1].role === 'user') {
+                state.conversationMessages.pop();
+            }
             showToast(data.error || 'Failed', 'error');
         }
         render();
@@ -592,6 +820,39 @@ function renderHeader() {
     `;
 }
 
+function renderFollowUpInput() {
+    return `
+        <div class="follow-up-input">
+            <div class="follow-up-container">
+                <input
+                    type="text"
+                    id="follow-up-text"
+                    class="follow-up-field"
+                    placeholder="Ask a follow-up question..."
+                    onkeydown="if(event.key === 'Enter') handleFollowUp()"
+                />
+                <div class="follow-up-actions">
+                    ${renderLiveAskButton()}
+                    <button class="btn btn-primary" onclick="handleFollowUp()">
+                        <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function handleFollowUp() {
+    const input = document.getElementById('follow-up-text')?.value.trim();
+    if (!input || !state.selectedProject) return;
+    // Always true for follow-up since we're in the follow-up UI
+    askQuestion(input, state.selectedProject, true);
+}
+
+window.handleFollowUp = handleFollowUp;
+
 function renderInputPanel() {
     const isMeetingMode = state.mode === 'meeting';
     const isQuestionMode = state.mode === 'question';
@@ -642,6 +903,7 @@ function renderInputPanel() {
                     placeholder="${inputPlaceholder}"
                 ></textarea>
                 <div class="input-actions-centered">
+                    ${isQuestionMode ? renderLiveAskButton() : ''}
                     <button
                         class="btn btn-primary btn-lg"
                         onclick="handleSubmit()"
@@ -724,6 +986,7 @@ function renderOutputStage() {
 
     // Show results view
     if (state.lastResult) {
+        const isQuestionMode = state.mode === 'question';
         return `
             <main class="output-stage">
                 <div class="status-bar">
@@ -739,6 +1002,7 @@ function renderOutputStage() {
                     </div>
                 </div>
                 ${renderResultsPanel()}
+                ${isQuestionMode ? renderFollowUpInput() : ''}
             </main>
         `;
     }
@@ -799,6 +1063,8 @@ function renderResultsPanel() {
     const result = state.lastResult;
     const hasActions = result.actions && result.actions.length > 0;
     const activeTab = state.resultsTab || 'output';
+    const isQuestionMode = state.mode === 'question';
+    const hasConversation = isQuestionMode && state.conversationMessages.length > 0;
 
     return `
         <div class="results-panel">
@@ -814,8 +1080,10 @@ function renderResultsPanel() {
             </div>
             <div class="results-content">
                 ${activeTab === 'output' ? `
-                    <div class="output-content">
-                        ${result.success ? formatContent(result.content || 'Done') : `<span style="color: var(--error)">${escapeHtml(result.error || 'An error occurred')}</span>`}
+                    <div class="output-content ${hasConversation ? 'conversation-view' : ''}">
+                        ${hasConversation ? renderConversation() : (
+                            result.success ? formatContent(result.content || 'Done') : `<span style="color: var(--error)">${escapeHtml(result.error || 'An error occurred')}</span>`
+                        )}
                     </div>
                 ` : `
                     <div class="actions-content">
@@ -825,6 +1093,15 @@ function renderResultsPanel() {
             </div>
         </div>
     `;
+}
+
+function renderConversation() {
+    return state.conversationMessages.map(msg => `
+        <div class="conversation-message ${msg.role}">
+            <div class="message-role">${msg.role === 'user' ? 'You' : 'ActionSync'}</div>
+            <div class="message-content">${msg.role === 'user' ? escapeHtml(msg.content) : formatContent(msg.content)}</div>
+        </div>
+    `).join('');
 }
 
 function setResultsTab(tab) {
@@ -1309,6 +1586,8 @@ function setMode(mode) {
 
 function clearResult() {
     state.lastResult = null;
+    state.sessionId = null;  // Clear session for fresh start
+    state.conversationMessages = [];  // Clear conversation history
     render();
 }
 
@@ -1320,7 +1599,7 @@ async function handleSubmit() {
         if (state.mode === 'meeting') {
             await processMeeting(input, state.selectedProject);
         } else {
-            await askQuestion(input, state.selectedProject);
+            await askQuestion(input, state.selectedProject, false);  // false = new question
         }
     } catch (e) {
         state.isProcessing = false;

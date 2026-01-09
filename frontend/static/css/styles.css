@@ -2473,3 +2473,338 @@ a.action-card:hover .action-key {
     opacity: 0.5;
     cursor: not-allowed;
 }
+
+/* =====================================================
+   Live Ask Mode
+   ===================================================== */
+
+/* Live Ask Button in Ask Mode */
+.live-ask-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--surface-3);
+    color: var(--text-1);
+    border: 1px solid var(--border);
+}
+
+.live-ask-btn:hover {
+    background: var(--surface-4);
+}
+
+.live-ask-btn.recording {
+    background: var(--error);
+    color: white;
+    border-color: var(--error);
+    animation: pulse-glow 1s ease-in-out infinite;
+}
+
+.live-ask-btn.transcribing,
+.live-ask-btn.processing {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+.live-ask-btn.loading {
+    background: var(--surface-4);
+    color: var(--text-2);
+}
+
+.live-ask-btn svg {
+    flex-shrink: 0;
+}
+
+/* Follow-up Input for Ask Mode */
+.follow-up-input {
+    padding: 1rem;
+    border-top: 1px solid var(--border);
+    background: var(--surface-1);
+}
+
+.follow-up-container {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.follow-up-field {
+    flex: 1;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-2);
+    color: var(--text-1);
+    font-size: 1rem;
+}
+
+.follow-up-field:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.follow-up-field::placeholder {
+    color: var(--text-3);
+}
+
+.follow-up-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.follow-up-actions .btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    height: auto;
+    min-height: unset;
+}
+
+.follow-up-actions .live-ask-btn {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+}
+
+.follow-up-actions .btn-primary {
+    padding: 0.5rem 0.75rem;
+}
+
+.follow-up-actions .btn-primary svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* Conversation View Styles */
+.output-content.conversation-view {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.conversation-message {
+    padding: 1rem 1.25rem;
+    border-radius: 12px;
+    max-width: 100%;
+}
+
+.conversation-message.user {
+    background: var(--surface-3);
+    border-left: 3px solid var(--accent);
+}
+
+.conversation-message.assistant {
+    background: var(--surface-2);
+    border-left: 3px solid var(--primary);
+}
+
+.message-role {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+    color: var(--text-3);
+}
+
+.conversation-message.user .message-role {
+    color: var(--accent);
+}
+
+.conversation-message.assistant .message-role {
+    color: var(--primary);
+}
+
+.message-content {
+    color: var(--text-1);
+    line-height: 1.6;
+}
+
+.conversation-message.user .message-content {
+    white-space: pre-wrap;
+}
+
+/* More spacing for input actions in Ask mode */
+.input-actions-centered {
+    gap: 1rem;
+}
+
+/* Old toggle styles - keeping for reference */
+.live-ask-toggle {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 50%;
+    background: var(--surface-3);
+    color: var(--text-2);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-right: 1rem;
+}
+
+.live-ask-toggle:hover {
+    background: var(--surface-4);
+    color: var(--text-1);
+}
+
+.live-ask-toggle.active {
+    background: var(--primary);
+    color: white;
+}
+
+.live-ask-toggle.loading {
+    background: var(--surface-4);
+    color: var(--warning);
+}
+
+.live-ask-toggle.recording {
+    background: var(--error);
+    color: white;
+    animation: pulse-glow 1s ease-in-out infinite;
+}
+
+.live-ask-toggle.listening {
+    background: var(--primary);
+    color: white;
+    animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.live-ask-toggle.transcribing {
+    background: var(--info);
+    color: white;
+}
+
+.live-ask-toggle.processing {
+    background: var(--success);
+    color: white;
+}
+
+.live-ask-toggle:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Pulse dot for listening state */
+.live-ask-toggle .pulse-dot {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 8px;
+    height: 8px;
+    background: var(--error);
+    border-radius: 50%;
+    animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.3);
+        opacity: 0.7;
+    }
+}
+
+@keyframes pulse-glow {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 8px rgba(99, 102, 241, 0);
+    }
+}
+
+/* Progress ring for model loading */
+.live-ask-toggle .progress-ring {
+    position: absolute;
+    bottom: -4px;
+    right: -4px;
+    font-size: 0.6rem;
+    background: var(--surface-1);
+    color: var(--text-1);
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+/* Live Ask Transcription Display */
+.live-ask-transcription {
+    position: fixed;
+    top: 120px;
+    right: 2rem;
+    width: 300px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 100;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+}
+
+.live-ask-transcription-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--text-2);
+    margin-bottom: 0.5rem;
+}
+
+.live-ask-status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-3);
+}
+
+.live-ask-status-indicator.listening {
+    background: var(--success);
+    animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+.live-ask-status-indicator.recording {
+    background: var(--error);
+    animation: pulse-dot 0.5s ease-in-out infinite;
+}
+
+.live-ask-status-indicator.transcribing {
+    background: var(--info);
+    animation: pulse-dot 1s ease-in-out infinite;
+}
+
+.live-ask-status-indicator.processing {
+    background: var(--warning);
+    animation: pulse-dot 0.8s ease-in-out infinite;
+}
+
+.live-ask-transcription-text {
+    font-size: 1rem;
+    color: var(--text-1);
+    font-style: italic;
+    line-height: 1.5;
+}
+
+.live-ask-transcription-text.muted {
+    color: var(--text-3);
+    font-style: normal;
+}
+
+.live-ask-transcription-text.error {
+    color: var(--error);
+    font-style: normal;
+}
+
+.live-ask-status-indicator.loading {
+    background: var(--warning);
+    animation: pulse-dot 1s ease-in-out infinite;
+}

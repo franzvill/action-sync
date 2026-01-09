@@ -104,6 +104,8 @@ class MeetingProcessRequest(BaseModel):
 
 # Question schemas
 class JiraQuestionRequest(BaseModel):
+    project_key: str
+    session_id: Optional[str] = None  # For continuing conversations
     question: str = Field(..., description="Question about the project", example="What are the open high-priority bugs?")
     project_key: str = Field(..., description="Jira project key to query", example="PROJ")
 
