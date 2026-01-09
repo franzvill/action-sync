@@ -96,10 +96,74 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="ActionSync",
-    description="Convert meeting transcriptions into Jira tickets",
+    title="ActionSync API",
+    description="""🚀 **ActionSync** - AI-powered meeting transcription to Jira ticket conversion
+    
+    ## Features
+    * 🎯 Convert meeting transcriptions into structured Jira tickets
+    * 🔐 Secure JWT-based authentication
+    * 📊 Kanban board integration
+    * 🔍 Semantic search across meeting history
+    * 🤖 AI-powered work automation
+    * 🔗 GitLab integration for code management
+    
+    ## Authentication
+    Most endpoints require Bearer token authentication. Get your token from `/api/auth/login`.
+    
+    ## Getting Started
+    1. Register a new account at `/api/auth/register`
+    2. Login to get your access token at `/api/auth/login`
+    3. Configure your Jira settings at `/api/jira/config`
+    4. Add your projects at `/api/jira/projects`
+    5. Start processing meetings at `/api/meetings/process`
+    """,
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    contact={
+        "name": "ActionSync Support",
+        "url": "https://github.com/your-repo/action-sync",
+    },
+    license_info={
+        "name": "MIT",
+        "url": "https://opensource.org/licenses/MIT",
+    },
+    tags_metadata=[
+        {
+            "name": "Authentication",
+            "description": "User registration, login, and profile management",
+        },
+        {
+            "name": "Jira Configuration",
+            "description": "Manage Jira and GitLab integration settings",
+        },
+        {
+            "name": "Projects",
+            "description": "Manage Jira projects and their configurations",
+        },
+        {
+            "name": "Meetings",
+            "description": "Process meeting transcriptions and manage meeting history",
+        },
+        {
+            "name": "Kanban",
+            "description": "Kanban board operations and ticket management",
+        },
+        {
+            "name": "AI Work",
+            "description": "AI-powered ticket processing and automation",
+        },
+        {
+            "name": "Processing",
+            "description": "Background task management and status monitoring",
+        },
+        {
+            "name": "WebSocket",
+            "description": "Real-time communication for processing updates",
+        },
+    ]
 )
 
 app.add_middleware(
@@ -113,8 +177,28 @@ app.add_middleware(
 
 # ============ Auth Routes ============
 
-@app.post("/api/auth/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
+@app.post(
+    "/api/auth/register", 
+    response_model=UserResponse, 
+    status_code=status.HTTP_201_CREATED,
+    tags=["Authentication"],
+    summary="Register a new user",
+    description="Create a new user account with email and password. Email must be unique.",
+    responses={
+        201: {"description": "User successfully created"},
+        400: {"description": "Email already registered or validation error"},
+    }
+)
+async def register(
+    user_data: UserCreate = {
+        "example": {
+            "email": "user@example.com",
+            "password": "securepassword123",
+            "full_name": "John Doe"
+        }
+    }, 
+    db: AsyncSession = Depends(get_db)
+):
     result = await db.execute(select(User).where(User.email == user_data.email))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
@@ -130,8 +214,26 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     return user
 
 
-@app.post("/api/auth/login", response_model=Token)
-async def login(user_data: UserLogin, db: AsyncSession = Depends(get_db)):
+@app.post(
+    "/api/auth/login", 
+    response_model=Token,
+    tags=["Authentication"],
+    summary="User login",
+    description="Authenticate user and return JWT access token for API access.",
+    responses={
+        200: {"description": "Login successful, returns access token"},
+        401: {"description": "Invalid credentials"},
+    }
+)
+async def login(
+    user_data: UserLogin = {
+        "example": {
+            "email": "user@example.com",
+            "password": "securepassword123"
+        }
+    }, 
+    db: AsyncSession = Depends(get_db)
+):
     result = await db.execute(select(User).where(User.email == user_data.email))
     user = result.scalar_one_or_none()
 
@@ -149,14 +251,34 @@ async def login(user_data: UserLogin, db: AsyncSession = Depends(get_db)):
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-@app.get("/api/auth/me", response_model=UserResponse)
+@app.get(
+    "/api/auth/me", 
+    response_model=UserResponse,
+    tags=["Authentication"],
+    summary="Get current user profile",
+    description="Retrieve the profile information of the currently authenticated user.",
+    responses={
+        200: {"description": "User profile retrieved successfully"},
+        401: {"description": "Authentication required"},
+    }
+)
 async def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 
 # ============ Jira Config Routes ============
 
-@app.get("/api/jira/config", response_model=Optional[JiraConfigResponse])
+@app.get(
+    "/api/jira/config", 
+    response_model=Optional[JiraConfigResponse],
+    tags=["Jira Configuration"],
+    summary="Get Jira configuration",
+    description="Retrieve the current user's Jira and GitLab integration settings.",
+    responses={
+        200: {"description": "Configuration retrieved (may be null if not set)"},
+        401: {"description": "Authentication required"},
+    }
+)
 async def get_jira_config(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -169,9 +291,29 @@ async def get_jira_config(
     return config
 
 
-@app.post("/api/jira/config", response_model=JiraConfigResponse, status_code=status.HTTP_201_CREATED)
+@app.post(
+    "/api/jira/config", 
+    response_model=JiraConfigResponse, 
+    status_code=status.HTTP_201_CREATED,
+    tags=["Jira Configuration"],
+    summary="Create Jira configuration",
+    description="Set up Jira and GitLab integration settings. Required for processing meetings.",
+    responses={
+        201: {"description": "Configuration created successfully"},
+        400: {"description": "Configuration already exists or validation error"},
+        401: {"description": "Authentication required"},
+    }
+)
 async def create_jira_config(
-    config_data: JiraConfigCreate,
+    config_data: JiraConfigCreate = {
+        "example": {
+            "jira_base_url": "https://yourcompany.atlassian.net",
+            "jira_email": "user@company.com",
+            "jira_api_token": "your-jira-api-token",
+            "gitlab_url": "https://gitlab.com",
+            "gitlab_token": "your-gitlab-token"
+        }
+    },
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -194,7 +336,18 @@ async def create_jira_config(
     return config
 
 
-@app.put("/api/jira/config", response_model=JiraConfigResponse)
+@app.put(
+    "/api/jira/config", 
+    response_model=JiraConfigResponse,
+    tags=["Jira Configuration"],
+    summary="Update Jira configuration",
+    description="Update existing Jira and GitLab integration settings. Only provided fields will be updated.",
+    responses={
+        200: {"description": "Configuration updated successfully"},
+        404: {"description": "Configuration not found"},
+        401: {"description": "Authentication required"},
+    }
+)
 async def update_jira_config(
     config_data: JiraConfigUpdate,
     current_user: User = Depends(get_current_user),
@@ -224,7 +377,17 @@ async def update_jira_config(
 
 # ============ Jira Projects Routes ============
 
-@app.get("/api/jira/projects", response_model=List[JiraProjectResponse])
+@app.get(
+    "/api/jira/projects", 
+    response_model=List[JiraProjectResponse],
+    tags=["Projects"],
+    summary="List Jira projects",
+    description="Get all configured Jira projects for the current user.",
+    responses={
+        200: {"description": "List of configured projects"},
+        401: {"description": "Authentication required"},
+    }
+)
 async def get_jira_projects(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -233,9 +396,31 @@ async def get_jira_projects(
     return result.scalars().all()
 
 
-@app.post("/api/jira/projects", response_model=JiraProjectResponse, status_code=status.HTTP_201_CREATED)
+@app.post(
+    "/api/jira/projects", 
+    response_model=JiraProjectResponse, 
+    status_code=status.HTTP_201_CREATED,
+    tags=["Projects"],
+    summary="Add Jira project",
+    description="Add a new Jira project to your configuration with optional GitLab integration.",
+    responses={
+        201: {"description": "Project added successfully"},
+        400: {"description": "Project already exists or validation error"},
+        401: {"description": "Authentication required"},
+    }
+)
 async def add_jira_project(
-    project_data: JiraProjectCreate,
+    project_data: JiraProjectCreate = {
+        "example": {
+            "project_key": "PROJ",
+            "project_name": "My Project",
+            "is_default": True,
+            "gitlab_projects": "group/repo1,group/repo2",
+            "custom_instructions": "Focus on backend tasks",
+            "embeddings_enabled": True,
+            "kanban_jql": "project = PROJ AND status != Done"
+        }
+    },
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -269,7 +454,18 @@ async def add_jira_project(
     return project
 
 
-@app.delete("/api/jira/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+@app.delete(
+    "/api/jira/projects/{project_id}", 
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["Projects"],
+    summary="Delete Jira project",
+    description="Remove a Jira project from your configuration.",
+    responses={
+        204: {"description": "Project deleted successfully"},
+        404: {"description": "Project not found"},
+        401: {"description": "Authentication required"},
+    }
+)
 async def delete_jira_project(
     project_id: int,
     current_user: User = Depends(get_current_user),
@@ -286,7 +482,18 @@ async def delete_jira_project(
     await db.commit()
 
 
-@app.put("/api/jira/projects/{project_id}", response_model=JiraProjectResponse)
+@app.put(
+    "/api/jira/projects/{project_id}", 
+    response_model=JiraProjectResponse,
+    tags=["Projects"],
+    summary="Update Jira project",
+    description="Update project settings including GitLab repositories and custom instructions.",
+    responses={
+        200: {"description": "Project updated successfully"},
+        404: {"description": "Project not found"},
+        401: {"description": "Authentication required"},
+    }
+)
 async def update_jira_project(
     project_id: int,
     project_data: JiraProjectUpdate,
@@ -318,13 +525,23 @@ async def update_jira_project(
 
 # ============ Kanban Routes ============
 
-@app.get("/api/jira/workflow/{project_key}")
+@app.get(
+    "/api/jira/workflow/{project_key}",
+    tags=["Kanban"],
+    summary="Get workflow statuses",
+    description="Retrieve available workflow statuses for Kanban board columns.",
+    responses={
+        200: {"description": "Workflow statuses retrieved successfully"},
+        404: {"description": "Project not found"},
+        401: {"description": "Authentication required"},
+        500: {"description": "Jira API error"},
+    }
+)
 async def get_workflow_statuses(
     project_key: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get workflow statuses for Kanban columns."""
     # Verify user has this project configured
     result = await db.execute(
         select(JiraProject).where(
@@ -350,13 +567,23 @@ async def get_workflow_statuses(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
-@app.get("/api/jira/kanban/{project_key}")
+@app.get(
+    "/api/jira/kanban/{project_key}",
+    tags=["Kanban"],
+    summary="Get Kanban tickets",
+    description="Retrieve tickets for Kanban board using project's JQL filter or default query.",
+    responses={
+        200: {"description": "Kanban tickets retrieved successfully"},
+        404: {"description": "Project not found"},
+        401: {"description": "Authentication required"},
+        500: {"description": "Jira API error"},
+    }
+)
 async def get_kanban_tickets(
     project_key: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get tickets for Kanban board based on project's JQL filter."""
     # Get project with its settings
     result = await db.execute(
         select(JiraProject).where(
@@ -389,13 +616,24 @@ async def get_kanban_tickets(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
-@app.get("/api/jira/ticket/{issue_key}")
+@app.get(
+    "/api/jira/ticket/{issue_key}",
+    tags=["Kanban"],
+    summary="Get ticket details",
+    description="Retrieve full details of a specific Jira ticket by issue key (e.g., PROJ-123).",
+    responses={
+        200: {"description": "Ticket details retrieved successfully"},
+        400: {"description": "Invalid issue key format"},
+        404: {"description": "Project or ticket not found"},
+        401: {"description": "Authentication required"},
+        500: {"description": "Jira API error"},
+    }
+)
 async def get_ticket_details(
     issue_key: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get full ticket details for the work panel."""
     # Validate issue key format (e.g., PROJ-123)
     if "-" not in issue_key or not issue_key.split("-")[1].isdigit():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid issue key format")
@@ -428,13 +666,29 @@ async def get_ticket_details(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
-@app.post("/api/work/start")
+@app.post(
+    "/api/work/start",
+    tags=["AI Work"],
+    summary="Start AI work on ticket",
+    description="Begin AI-powered work on a Jira ticket including code analysis and implementation.",
+    responses={
+        200: {"description": "AI work started successfully"},
+        400: {"description": "Invalid request or missing configuration"},
+        404: {"description": "Project not found"},
+        409: {"description": "Another task is already processing"},
+        401: {"description": "Authentication required"},
+    }
+)
 async def start_work(
-    work_data: WorkStartRequest,
+    work_data: WorkStartRequest = {
+        "example": {
+            "project_id": 1,
+            "issue_key": "PROJ-123"
+        }
+    },
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Start AI work on a Jira ticket."""
     if processing_state.is_processing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -571,7 +825,16 @@ async def _work_ticket_task(
 
 # ============ Meeting Processing Routes ============
 
-@app.get("/api/processing/status")
+@app.get(
+    "/api/processing/status",
+    tags=["Processing"],
+    summary="Get processing status",
+    description="Check if any background processing task is currently running.",
+    responses={
+        200: {"description": "Processing status retrieved"},
+        401: {"description": "Authentication required"},
+    }
+)
 async def get_processing_status(current_user: User = Depends(get_current_user)):
     return {
         "is_processing": processing_state.is_processing,
@@ -579,7 +842,18 @@ async def get_processing_status(current_user: User = Depends(get_current_user)):
     }
 
 
-@app.post("/api/processing/abort")
+@app.post(
+    "/api/processing/abort",
+    tags=["Processing"],
+    summary="Abort processing task",
+    description="Cancel the currently running background processing task.",
+    responses={
+        200: {"description": "Task aborted successfully"},
+        400: {"description": "No task is currently processing"},
+        403: {"description": "Cannot abort another user's task"},
+        401: {"description": "Authentication required"},
+    }
+)
 async def abort_processing(current_user: User = Depends(get_current_user)):
     if not processing_state.is_processing:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No task is processing")
@@ -592,9 +866,25 @@ async def abort_processing(current_user: User = Depends(get_current_user)):
     return {"status": "aborted"}
 
 
-@app.post("/api/meetings/process")
+@app.post(
+    "/api/meetings/process",
+    tags=["Meetings"],
+    summary="Process meeting transcription",
+    description="Convert meeting transcription into structured Jira tickets using AI.",
+    responses={
+        200: {"description": "Meeting processing started"},
+        400: {"description": "Invalid request or missing configuration"},
+        409: {"description": "Another meeting is being processed"},
+        401: {"description": "Authentication required"},
+    }
+)
 async def process_meeting(
-    meeting_data: MeetingProcessRequest,
+    meeting_data: MeetingProcessRequest = {
+        "example": {
+            "transcription": "We discussed implementing a new user authentication system...",
+            "project_key": "PROJ"
+        }
+    },
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -722,9 +1012,25 @@ async def _process_meeting_task(
 
 # ============ Ask Question ============
 
-@app.post("/api/jira/ask")
+@app.post(
+    "/api/jira/ask",
+    tags=["AI Work"],
+    summary="Ask AI about project",
+    description="Ask AI questions about your Jira project and get intelligent responses.",
+    responses={
+        200: {"description": "Question processing started"},
+        400: {"description": "Invalid request or missing configuration"},
+        409: {"description": "Another task is being processed"},
+        401: {"description": "Authentication required"},
+    }
+)
 async def ask_question(
-    question_data: JiraQuestionRequest,
+    question_data: JiraQuestionRequest = {
+        "example": {
+            "question": "What are the open high-priority bugs in this project?",
+            "project_key": "PROJ"
+        }
+    },
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -819,7 +1125,12 @@ async def _ask_question_task(
 
 # ============ WebSocket ============
 
-@app.websocket("/ws")
+@app.websocket(
+    "/ws",
+    tags=["WebSocket"],
+    summary="WebSocket connection",
+    description="Establish WebSocket connection for real-time processing updates. Requires JWT token as query parameter."
+)
 async def websocket_endpoint(websocket: WebSocket, token: str):
     from jose import JWTError, jwt
     from database import async_session_maker
@@ -853,7 +1164,16 @@ async def websocket_endpoint(websocket: WebSocket, token: str):
 
 # ============ Meetings History & Search ============
 
-@app.get("/api/meetings")
+@app.get(
+    "/api/meetings",
+    tags=["Meetings"],
+    summary="List meetings",
+    description="Retrieve paginated list of past meetings with optional project filtering.",
+    responses={
+        200: {"description": "Meetings retrieved successfully"},
+        401: {"description": "Authentication required"},
+    }
+)
 async def list_meetings(
     project_key: Optional[str] = None,
     limit: int = 50,
@@ -861,7 +1181,6 @@ async def list_meetings(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """List past meetings for the current user."""
     meetings = await get_meetings(
         db=db,
         user_id=current_user.id,
@@ -872,13 +1191,22 @@ async def list_meetings(
     return {"meetings": meetings}
 
 
-@app.get("/api/meetings/{meeting_id}")
+@app.get(
+    "/api/meetings/{meeting_id}",
+    tags=["Meetings"],
+    summary="Get meeting details",
+    description="Retrieve detailed information about a specific meeting including transcription and generated tickets.",
+    responses={
+        200: {"description": "Meeting details retrieved successfully"},
+        404: {"description": "Meeting not found"},
+        401: {"description": "Authentication required"},
+    }
+)
 async def get_meeting(
     meeting_id: int,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get details of a specific meeting."""
     meeting = await get_meeting_detail(
         db=db,
         meeting_id=meeting_id,
@@ -889,7 +1217,16 @@ async def get_meeting(
     return meeting
 
 
-@app.post("/api/meetings/search")
+@app.post(
+    "/api/meetings/search",
+    tags=["Meetings"],
+    summary="Search meetings",
+    description="Perform semantic search across meeting transcriptions to find relevant content.",
+    responses={
+        200: {"description": "Search results retrieved successfully"},
+        401: {"description": "Authentication required"},
+    }
+)
 async def search_meetings(
     query: str,
     project_key: Optional[str] = None,
@@ -897,7 +1234,6 @@ async def search_meetings(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Semantic search across meeting transcriptions."""
     results = await semantic_search(
         db=db,
         query=query,
@@ -908,13 +1244,23 @@ async def search_meetings(
     return {"results": results}
 
 
-@app.delete("/api/meetings/{meeting_id}", status_code=status.HTTP_204_NO_CONTENT)
+@app.delete(
+    "/api/meetings/{meeting_id}", 
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["Meetings"],
+    summary="Delete meeting",
+    description="Permanently delete a meeting and all its associated data.",
+    responses={
+        204: {"description": "Meeting deleted successfully"},
+        404: {"description": "Meeting not found"},
+        401: {"description": "Authentication required"},
+    }
+)
 async def delete_meeting(
     meeting_id: int,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Delete a meeting and its chunks."""
     result = await db.execute(
         select(Meeting).where(Meeting.id == meeting_id, Meeting.user_id == current_user.id)
     )
