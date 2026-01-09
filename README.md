@@ -2,6 +2,11 @@
 
 Transform meeting transcriptions into Jira tickets automatically using Claude AI.
 
+<img width="3384" height="1910" alt="image" src="https://github.com/user-attachments/assets/a380985d-3fe5-431f-a170-5604e8960988" />
+
+<img width="3394" height="1926" alt="image" src="https://github.com/user-attachments/assets/4301f4bb-ac17-4214-b463-0268d836af09" />
+
+
 ## Features
 
 - **Meeting Mode**: Paste a meeting transcript. Claude analyzes it, checks your GitLab repos for technical context, and creates Jira tickets with relevant files, components, acceptance criteria, and links to related issues.
