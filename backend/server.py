@@ -26,6 +26,7 @@ from auth import (
 from config import get_settings
 from meeting_processor import process_meeting_transcription, ask_jira_question
 from work_processor import clone_repos_for_work, process_work_ticket
+from session_manager import session_manager
 from embedding_service import (
     store_meeting_with_embeddings, semantic_search, get_meetings, get_meeting_detail
 )
@@ -92,7 +93,9 @@ manager = ConnectionManager()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    await session_manager.start()
     yield
+    await session_manager.stop()
 
 
 app = FastAPI(
@@ -765,7 +768,8 @@ async def ask_question(
             current_user.id,
             jira_config.gitlab_url,
             jira_config.gitlab_token,
-            project.gitlab_projects
+            project.gitlab_projects,
+            question_data.session_id
         )
     )
     processing_state.current_task = task
@@ -782,7 +786,8 @@ async def _ask_question_task(
     user_id: int,
     gitlab_url: str = None,
     gitlab_token: str = None,
-    gitlab_projects: str = None
+    gitlab_projects: str = None,
+    session_id: str = None
 ):
     async def message_callback(message: dict):
         await manager.send_message(user_id, message)
@@ -798,13 +803,15 @@ async def _ask_question_task(
             gitlab_url=gitlab_url,
             gitlab_token=gitlab_token,
             gitlab_projects=gitlab_projects,
-            user_id=user_id
+            user_id=user_id,
+            session_id=session_id
         )
 
         await manager.send_message(user_id, {
             "type": "complete",
             "success": result["success"],
-            "answer": result.get("answer", "")
+            "answer": result.get("answer", ""),
+            "session_id": result.get("session_id")
         })
 
     except asyncio.CancelledError:

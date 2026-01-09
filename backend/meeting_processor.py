@@ -12,16 +12,49 @@ import asyncio
 from pathlib import Path
 from typing import Callable, Any, Optional, Coroutine, List
 
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, TextBlock, ToolUseBlock, ResultMessage
 from jira_tools import JiraClient, set_jira_client, set_result_callback, set_meeting_search_fn, create_jira_mcp_server
 from config import get_settings
 from database import async_session_maker
 from embedding_service import semantic_search
+from session_manager import session_manager
 
 settings = get_settings()
 
 # Directory to clone repos into
 REPOS_DIR = Path("/tmp/repos")
+
+
+async def _clone_repo(
+    clone_url: str,
+    masked_url: str,
+    project_path: str,
+    target_dir: Path,
+    callback: Optional[Callable[[dict[str, Any]], Coroutine[Any, Any, None]]] = None
+) -> None:
+    """
+    Helper to clone a single repository.
+    """
+    if callback:
+        await callback({"type": "text", "content": f"📥 Cloning {project_path}...\n"})
+
+    process = await asyncio.create_subprocess_exec(
+        "git", "clone", "--depth", "1", clone_url, str(target_dir),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
+    stdout, stderr = await process.communicate()
+
+    if process.returncode == 0:
+        print(f"[GitLab] ✓ Cloned {project_path}")
+        if callback:
+            await callback({"type": "text", "content": f"✅ Cloned {project_path}\n"})
+    else:
+        error_msg = stderr.decode() if stderr else "Unknown error"
+        print(f"[GitLab] ✗ Failed to clone {project_path}: {error_msg}")
+        if callback:
+            await callback({"type": "text", "content": f"❌ Failed to clone {project_path}: {error_msg}\n"})
+        raise Exception(f"Git clone failed: {error_msg}")
 
 
 async def clone_gitlab_repos(
@@ -31,23 +64,20 @@ async def clone_gitlab_repos(
     callback: Optional[Callable[[dict[str, Any]], Coroutine[Any, Any, None]]] = None
 ) -> Path:
     """
-    Clone GitLab repositories to a local directory.
+    Clone or update GitLab repositories to a local directory.
+    If repo already exists, pulls latest changes instead of re-cloning.
     Returns the path to the repos directory.
     """
-    print(f"[GitLab Clone] Starting clone process for {len(project_paths)} project(s)")
-    print(f"[GitLab Clone] GitLab URL: {gitlab_url}")
-    print(f"[GitLab Clone] Projects: {project_paths}")
+    print(f"[GitLab] Starting sync for {len(project_paths)} project(s)")
+    print(f"[GitLab] GitLab URL: {gitlab_url}")
+    print(f"[GitLab] Projects: {project_paths}")
 
-    # Clean up and recreate repos directory
-    if REPOS_DIR.exists():
-        print(f"[GitLab Clone] Cleaning up existing repos directory: {REPOS_DIR}")
-        shutil.rmtree(REPOS_DIR)
+    # Create repos directory if it doesn't exist
     REPOS_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"[GitLab Clone] Created repos directory: {REPOS_DIR}")
 
     # Parse gitlab URL to get host
     gitlab_host = gitlab_url.rstrip("/").replace("https://", "").replace("http://", "")
-    print(f"[GitLab Clone] Parsed host: {gitlab_host}")
+    print(f"[GitLab] Parsed host: {gitlab_host}")
 
     for project_path in project_paths:
         project_path = project_path.strip()
@@ -57,48 +87,59 @@ async def clone_gitlab_repos(
         # Build clone URL with token for auth (mask token in logs)
         clone_url = f"https://oauth2:{gitlab_token}@{gitlab_host}/{project_path}.git"
         masked_url = f"https://oauth2:***@{gitlab_host}/{project_path}.git"
-        print(f"[GitLab Clone] Cloning: {masked_url}")
 
         # Get just the project name for the local folder
         project_name = project_path.split("/")[-1]
         target_dir = REPOS_DIR / project_name
 
-        if callback:
-            await callback({"type": "text", "content": f"📦 Cloning repository {project_path}...\n"})
-
-        try:
-            # Run git clone
-            process = await asyncio.create_subprocess_exec(
-                "git", "clone", "--depth", "1", clone_url, str(target_dir),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            stdout, stderr = await process.communicate()
-
-            if process.returncode == 0:
-                print(f"[GitLab Clone] ✓ Successfully cloned {project_path} to {target_dir}")
-
-                # List files in cloned directory
-                files = list(target_dir.rglob("*"))
-                file_count = len([f for f in files if f.is_file()])
-                dir_count = len([f for f in files if f.is_dir()])
-                print(f"[GitLab Clone] Directory contents: {file_count} files, {dir_count} directories")
-
-                # Show top-level contents
-                top_level = list(target_dir.iterdir())
-                print(f"[GitLab Clone] Top-level items: {[f.name for f in top_level]}")
-
-                if callback:
-                    await callback({"type": "text", "content": f"✅ Cloned {project_path} ({file_count} files)\n"})
-            else:
-                error_msg = stderr.decode() if stderr else "Unknown error"
-                print(f"[GitLab Clone] ✗ Failed to clone {project_path}: {error_msg}")
-                if callback:
-                    await callback({"type": "text", "content": f"❌ Failed to clone {project_path}: {error_msg}\n"})
-        except Exception as e:
-            print(f"[GitLab Clone] ✗ Exception cloning {project_path}: {e}")
+        # Check if repo already exists
+        git_dir = target_dir / ".git"
+        if git_dir.exists():
+            # Repo exists - pull latest changes
+            print(f"[GitLab] Pulling updates for: {project_path}")
             if callback:
-                await callback({"type": "text", "content": f"❌ Error cloning {project_path}: {e}\n"})
+                await callback({"type": "text", "content": f"🔄 Pulling updates for {project_path}...\n"})
+
+            try:
+                # Update remote URL in case token changed
+                await asyncio.create_subprocess_exec(
+                    "git", "-C", str(target_dir), "remote", "set-url", "origin", clone_url,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+
+                # Reset any local changes and pull
+                await asyncio.create_subprocess_exec(
+                    "git", "-C", str(target_dir), "reset", "--hard", "HEAD",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+
+                process = await asyncio.create_subprocess_exec(
+                    "git", "-C", str(target_dir), "pull", "--ff-only",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, stderr = await process.communicate()
+
+                if process.returncode == 0:
+                    print(f"[GitLab] ✓ Updated {project_path}")
+                    if callback:
+                        await callback({"type": "text", "content": f"✅ Updated {project_path}\n"})
+                else:
+                    # Pull failed - try fresh clone
+                    print(f"[GitLab] Pull failed, re-cloning {project_path}")
+                    shutil.rmtree(target_dir)
+                    await _clone_repo(clone_url, masked_url, project_path, target_dir, callback)
+            except Exception as e:
+                print(f"[GitLab] ✗ Exception updating {project_path}: {e}, will re-clone")
+                if target_dir.exists():
+                    shutil.rmtree(target_dir)
+                await _clone_repo(clone_url, masked_url, project_path, target_dir, callback)
+        else:
+            # Repo doesn't exist - clone it
+            print(f"[GitLab] Cloning: {masked_url}")
+            await _clone_repo(clone_url, masked_url, project_path, target_dir, callback)
 
     # Final summary
     if REPOS_DIR.exists():
@@ -347,24 +388,58 @@ async def ask_jira_question(
     gitlab_url: Optional[str] = None,
     gitlab_token: Optional[str] = None,
     gitlab_projects: Optional[str] = None,
-    user_id: Optional[int] = None
+    user_id: Optional[int] = None,
+    session_id: Optional[str] = None
 ) -> dict[str, Any]:
     """
     Ask a question about a Jira project and get an answer using Claude.
     Claude has access to Jira, past meeting history, and optionally the codebase.
+
+    If session_id is provided and valid, continues the existing conversation.
+    Otherwise, creates a new session.
     """
-    # Clone repos if configured
+    result_text = ""
+
+    async def send_callback(data: dict):
+        if message_callback:
+            try:
+                await message_callback(data)
+            except Exception as e:
+                print(f"Callback error: {e}")
+
+    # Initialize the Jira client
+    jira_client = JiraClient(jira_base_url, jira_email, jira_api_token)
+    set_jira_client(jira_client)
+    set_result_callback(send_callback)
+
+    # Set up meeting search function if user_id is available
+    if user_id is not None:
+        async def meeting_search_wrapper(query: str, limit: int = 5) -> list:
+            async with async_session_maker() as db:
+                results = await semantic_search(
+                    db=db,
+                    query=query,
+                    user_id=user_id,
+                    project_key=project_key,
+                    limit=limit
+                )
+                return results
+        set_meeting_search_fn(meeting_search_wrapper)
+
+    # Check for existing session
+    session = None
+    if session_id:
+        session = session_manager.get_session(session_id)
+
+    # Clone repos if configured (only for new sessions)
     repos_dir = None
     codebase_section = ""
-    if gitlab_url and gitlab_token and gitlab_projects:
+    if not session and gitlab_url and gitlab_token and gitlab_projects:
         project_list = [p.strip() for p in gitlab_projects.split(",") if p.strip()]
         if project_list:
-            # Clone the repositories
             repos_dir = await clone_gitlab_repos(
                 gitlab_url, gitlab_token, project_list, message_callback
             )
-
-            # Build list of cloned project names
             cloned_repos = [p.split("/")[-1] for p in project_list]
             codebase_section = f"""
 
@@ -378,12 +453,76 @@ Use the Read, Glob, and Grep tools to explore the codebase when the question inv
 - Technical questions about how something works
 """
 
-    prompt = f"""You are a helpful assistant that answers questions about a Jira project.
+    try:
+        if session:
+            # Continue existing conversation - just send the follow-up question
+            print(f"[AskQuestion] Continuing session {session_id}")
+            session.is_processing = True
+
+            await session.client.query(question)
+
+            async for event in session.client.receive_response():
+                event_type = type(event).__name__
+
+                if event_type == "AssistantMessage" or isinstance(event, AssistantMessage):
+                    for block in getattr(event, "content", []):
+                        if isinstance(block, TextBlock):
+                            text = block.text
+                            result_text += text
+                            await send_callback({"type": "text", "content": text})
+                        elif isinstance(block, ToolUseBlock):
+                            await send_callback({
+                                "type": "tool_use",
+                                "tool": block.name,
+                                "input": block.input
+                            })
+
+                elif event_type == "ToolResultMessage":
+                    content = getattr(event, "content", "")
+                    await send_callback({"type": "tool_result", "content": str(content)})
+
+                elif event_type == "ResultMessage" or isinstance(event, ResultMessage):
+                    result_content = getattr(event, "result", "")
+                    if result_content:
+                        result_text = result_content
+                    await send_callback({"type": "result", "content": result_text})
+
+            session.is_processing = False
+
+            return {
+                "success": True,
+                "answer": result_text,
+                "session_id": session_id
+            }
+
+        else:
+            # Create new session
+            print(f"[AskQuestion] Creating new session for user {user_id}")
+
+            jira_server = create_jira_mcp_server()
+
+            options = ClaudeAgentOptions(
+                max_turns=100,
+                permission_mode="bypassPermissions",
+                mcp_servers={"jira": jira_server},
+                allowed_tools=JIRA_TOOLS,
+                model=settings.azure_anthropic_model if settings.azure_anthropic_model else "claude-opus-4-5",
+                cwd=repos_dir if repos_dir else None,
+                env={
+                    "ANTHROPIC_BASE_URL": settings.azure_anthropic_endpoint,
+                    "ANTHROPIC_API_KEY": settings.azure_anthropic_api_key,
+                },
+            )
+
+            # Create session through manager
+            session = await session_manager.create_session(user_id, options)
+            session.is_processing = True
+
+            # Build the initial prompt with full context
+            prompt = f"""You are a helpful assistant that answers questions about a Jira project.
+You are starting a conversation with the user. They may ask follow-up questions, so remember the context.
 
 ## Project: {project_key}
-
-## User Question:
-{question}
 
 ## Available Information Sources:
 You have access to THREE sources of information to answer questions:
@@ -403,25 +542,56 @@ You have access to THREE sources of information to answer questions:
 - Include issue keys (like {project_key}-123) when referencing specific tickets
 - Reference specific files or code when answering technical questions
 
+## User's Question:
+{question}
+
 Answer the question now:
 """
 
-    try:
-        result_text = await _run_claude_with_jira(
-            prompt, jira_base_url, jira_email, jira_api_token, message_callback,
-            cwd=repos_dir, user_id=user_id, project_key=project_key
-        )
+            await session.client.query(prompt)
 
-        return {
-            "success": True,
-            "answer": result_text
-        }
+            async for event in session.client.receive_response():
+                event_type = type(event).__name__
+
+                if event_type == "AssistantMessage" or isinstance(event, AssistantMessage):
+                    for block in getattr(event, "content", []):
+                        if isinstance(block, TextBlock):
+                            text = block.text
+                            result_text += text
+                            await send_callback({"type": "text", "content": text})
+                        elif isinstance(block, ToolUseBlock):
+                            await send_callback({
+                                "type": "tool_use",
+                                "tool": block.name,
+                                "input": block.input
+                            })
+
+                elif event_type == "ToolResultMessage":
+                    content = getattr(event, "content", "")
+                    await send_callback({"type": "tool_result", "content": str(content)})
+
+                elif event_type == "ResultMessage" or isinstance(event, ResultMessage):
+                    result_content = getattr(event, "result", "")
+                    if result_content:
+                        result_text = result_content
+                    await send_callback({"type": "result", "content": result_text})
+
+            session.is_processing = False
+
+            return {
+                "success": True,
+                "answer": result_text,
+                "session_id": session.session_id
+            }
 
     except Exception as e:
+        if session:
+            session.is_processing = False
         if message_callback:
             await message_callback({"type": "error", "content": str(e)})
         return {
             "success": False,
             "error": str(e),
-            "answer": f"Failed to answer question: {str(e)}"
+            "answer": f"Failed to answer question: {str(e)}",
+            "session_id": session.session_id if session else None
         }

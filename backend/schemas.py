@@ -106,6 +106,7 @@ class MeetingProcessRequest(BaseModel):
 class JiraQuestionRequest(BaseModel):
     question: str
     project_key: str
+    session_id: Optional[str] = None  # For continuing conversations
 
 
 # Work schemas
