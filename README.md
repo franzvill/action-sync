@@ -85,6 +85,14 @@ Jira REST API + GitLab API
 
 ## Configuration
 
+### API Provider Setup
+
+ActionSync supports both direct Anthropic/OpenAI APIs and Azure-hosted versions. See the [API Providers Guide](docs/API_PROVIDERS.md) for detailed configuration instructions.
+
+**Quick start options:**
+- **Direct APIs** (no Azure needed): Set `LLM_PROVIDER=anthropic` and `ANTHROPIC_API_KEY`
+- **Azure**: Set `LLM_PROVIDER=azure_anthropic` with Azure endpoint and key
+
 ### Jira Setup
 
 1. Create an API token at https://id.atlassian.com/manage-profile/security/api-tokens
