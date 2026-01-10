@@ -16,6 +16,7 @@ Transform meeting transcriptions into Jira tickets automatically using Claude AI
 - **Meeting History & Semantic Search**: Store processed meetings with vector embeddings for intelligent search.
 - **Real-time Updates**: WebSocket connection for live processing feedback.
 - **Per-Project Customization**: Custom instructions, GitLab repos, and settings per project.
+- **Flexible API Support**: Works with direct Anthropic/OpenAI APIs or Azure-hosted versions - no Azure subscription required!
 
 ## Architecture
 
@@ -26,15 +27,16 @@ FastAPI Backend (Python/Async)
     ↓
 PostgreSQL Database (with pgvector)
     ↓
-Claude AI (via Azure Anthropic API)
+Claude AI (Anthropic or Azure Anthropic API)
+OpenAI Embeddings (OpenAI or Azure OpenAI API)
     ↓
 Jira REST API + GitLab API
 ```
 
 - **Backend**: FastAPI with async SQLAlchemy (PostgreSQL/SQLite)
 - **Frontend**: Vanilla JavaScript SPA with modern dark theme
-- **AI**: Claude via Azure Anthropic with MCP tools for Jira operations
-- **Embeddings**: Azure OpenAI for semantic search (optional)
+- **AI**: Claude via Anthropic API (direct or Azure) with MCP tools for Jira operations
+- **Embeddings**: OpenAI API (direct or Azure) for semantic search (optional)
 - **Auth**: JWT tokens with bcrypt password hashing
 
 ## Quick Start
@@ -50,6 +52,12 @@ Jira REST API + GitLab API
    Required variables:
    - `POSTGRES_PASSWORD` - Database password
    - `SECRET_KEY` - JWT signing secret
+   - `LLM_PROVIDER` - Choose `anthropic` or `azure_anthropic`
+   
+   **For direct Anthropic API** (LLM_PROVIDER=anthropic):
+   - `ANTHROPIC_API_KEY` - Your Anthropic API key
+   
+   **For Azure Anthropic** (LLM_PROVIDER=azure_anthropic):
    - `AZURE_ANTHROPIC_ENDPOINT` - Azure Anthropic API endpoint
    - `AZURE_ANTHROPIC_API_KEY` - Azure Anthropic API key
 
@@ -76,6 +84,14 @@ Jira REST API + GitLab API
    ```
 
 ## Configuration
+
+### API Provider Setup
+
+ActionSync supports both direct Anthropic/OpenAI APIs and Azure-hosted versions. See the [API Providers Guide](docs/API_PROVIDERS.md) for detailed configuration instructions.
+
+**Quick start options:**
+- **Direct APIs** (no Azure needed): Set `LLM_PROVIDER=anthropic` and `ANTHROPIC_API_KEY`
+- **Azure**: Set `LLM_PROVIDER=azure_anthropic` with Azure endpoint and key
 
 ### Jira Setup
 
@@ -133,16 +149,54 @@ In Settings, add Jira project keys (e.g., `PROJ`, `DEV`, `SUPPORT`) with optiona
 
 ## Environment Variables
 
+### Core Settings
+
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `SECRET_KEY` | Yes | JWT signing secret (change in production) |
-| `AZURE_ANTHROPIC_ENDPOINT` | Yes | Azure Anthropic API endpoint |
-| `AZURE_ANTHROPIC_API_KEY` | Yes | Azure Anthropic API key |
-| `AZURE_ANTHROPIC_MODEL` | No | Claude model (default: `claude-opus-4-5`) |
 | `DATABASE_URL` | No | Database connection string (default: SQLite) |
-| `AZURE_OPENAI_ENDPOINT` | No | Azure OpenAI endpoint (for embeddings) |
-| `AZURE_OPENAI_API_KEY` | No | Azure OpenAI API key (for embeddings) |
-| `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | No | Embedding model (default: `text-embedding-3-small`) |
+
+### LLM Configuration
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `LLM_PROVIDER` | No | LLM provider: `anthropic` or `azure_anthropic` (default: `azure_anthropic`) |
+
+**For Direct Anthropic (LLM_PROVIDER=anthropic):**
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `ANTHROPIC_API_KEY` | Yes* | Anthropic API key from api.anthropic.com |
+| `ANTHROPIC_MODEL` | No | Claude model (default: `claude-opus-4-20250514`) |
+
+**For Azure Anthropic (LLM_PROVIDER=azure_anthropic):**
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `AZURE_ANTHROPIC_ENDPOINT` | Yes* | Azure Anthropic API endpoint |
+| `AZURE_ANTHROPIC_API_KEY` | Yes* | Azure Anthropic API key |
+| `AZURE_ANTHROPIC_MODEL` | No | Claude model (default: `claude-opus-4-5`) |
+
+### Embedding Configuration (Optional - for semantic search)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `EMBEDDING_PROVIDER` | No | Embedding provider: `openai` or `azure_openai` (default: `azure_openai`) |
+
+**For Direct OpenAI (EMBEDDING_PROVIDER=openai):**
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENAI_API_KEY` | Yes* | OpenAI API key from platform.openai.com |
+| `OPENAI_EMBEDDING_MODEL` | No | Embedding model (default: `text-embedding-3-small`) |
+
+**For Azure OpenAI (EMBEDDING_PROVIDER=azure_openai):**
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `AZURE_OPENAI_ENDPOINT` | Yes* | Azure OpenAI endpoint (for embeddings) |
+| `AZURE_OPENAI_API_KEY` | Yes* | Azure OpenAI API key (for embeddings) |
+| `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | No | Embedding deployment name (default: `text-embedding-3-small`) |
 
 ## API Endpoints
 
