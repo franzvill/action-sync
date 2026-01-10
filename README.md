@@ -92,6 +92,24 @@ Jira REST API + GitLab API
    - GitLab URL (e.g., `https://gitlab.com`)
    - Personal Access Token
 
+### ServiceNow Setup (Optional)
+
+ServiceNow integration enables automatic creation and management of ServiceNow tickets based on repository events.
+
+1. Create a ServiceNow user account with appropriate permissions
+2. In the app Settings, configure ServiceNow:
+   - Instance URL (e.g., `https://dev123456.service-now.com`)
+   - Username
+   - Password
+3. Use the "Test Connection" button to verify your configuration
+
+**Supported Features:**
+- Create incidents with customizable urgency and impact levels
+- Create change requests for deployment tracking
+- Update existing tickets with work notes
+- Search and query incidents
+- Close incidents with resolution notes
+
 ### Adding Projects
 
 In Settings, add Jira project keys (e.g., `PROJ`, `DEV`, `SUPPORT`) with optional configuration:

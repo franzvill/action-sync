@@ -12,11 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from database import get_db, init_db, async_session_maker
-from models import User, JiraConfig, JiraProject, Meeting
+from models import User, JiraConfig, JiraProject, Meeting, ServiceNowConfig
 from schemas import (
     UserCreate, UserLogin, UserResponse, Token,
     JiraConfigCreate, JiraConfigResponse, JiraConfigUpdate,
     JiraProjectCreate, JiraProjectResponse, JiraProjectUpdate,
+    ServiceNowConfigCreate, ServiceNowConfigResponse, ServiceNowConfigUpdate,
     MeetingProcessRequest, JiraQuestionRequest, WorkStartRequest
 )
 from auth import (
@@ -31,6 +32,7 @@ from embedding_service import (
     store_meeting_with_embeddings, semantic_search, get_meetings, get_meeting_detail
 )
 from jira_tools import JiraClient
+from servicenow_tools import ServiceNowClient
 
 settings = get_settings()
 
@@ -141,6 +143,10 @@ app = FastAPI(
         {
             "name": "Jira Configuration",
             "description": "Manage Jira and GitLab integration settings",
+        },
+        {
+            "name": "ServiceNow Configuration",
+            "description": "Manage ServiceNow integration settings for ticketing",
         },
         {
             "name": "Projects",
@@ -376,6 +382,158 @@ async def update_jira_config(
     await db.refresh(config)
     config.has_gitlab = bool(config.gitlab_token)
     return config
+
+
+# ============ ServiceNow Config Routes ============
+
+@app.get(
+    "/api/servicenow/config", 
+    response_model=Optional[ServiceNowConfigResponse],
+    tags=["ServiceNow Configuration"],
+    summary="Get ServiceNow configuration",
+    description="Retrieve the current user's ServiceNow integration settings.",
+    responses={
+        200: {"description": "Configuration retrieved (may be null if not set)"},
+        401: {"description": "Authentication required"},
+    }
+)
+async def get_servicenow_config(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(ServiceNowConfig).where(ServiceNowConfig.user_id == current_user.id))
+    config = result.scalar_one_or_none()
+    return config
+
+
+@app.post(
+    "/api/servicenow/config", 
+    response_model=ServiceNowConfigResponse, 
+    status_code=status.HTTP_201_CREATED,
+    tags=["ServiceNow Configuration"],
+    summary="Create ServiceNow configuration",
+    description="Set up ServiceNow integration settings for automatic ticket creation.",
+    responses={
+        201: {"description": "Configuration created successfully"},
+        400: {"description": "Configuration already exists or validation error"},
+        401: {"description": "Authentication required"},
+    }
+)
+async def create_servicenow_config(
+    config_data: ServiceNowConfigCreate = {
+        "example": {
+            "instance_url": "https://dev123456.service-now.com",
+            "username": "admin",
+            "password": "your-password"
+        }
+    },
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(ServiceNowConfig).where(ServiceNowConfig.user_id == current_user.id))
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ServiceNow config already exists. Use PUT to update.")
+
+    config = ServiceNowConfig(
+        user_id=current_user.id,
+        instance_url=config_data.instance_url.rstrip("/"),
+        username=config_data.username,
+        password=config_data.password
+    )
+    db.add(config)
+    await db.commit()
+    await db.refresh(config)
+    return config
+
+
+@app.put(
+    "/api/servicenow/config", 
+    response_model=ServiceNowConfigResponse,
+    tags=["ServiceNow Configuration"],
+    summary="Update ServiceNow configuration",
+    description="Update existing ServiceNow integration settings. Only provided fields will be updated.",
+    responses={
+        200: {"description": "Configuration updated successfully"},
+        404: {"description": "Configuration not found"},
+        401: {"description": "Authentication required"},
+    }
+)
+async def update_servicenow_config(
+    config_data: ServiceNowConfigUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(ServiceNowConfig).where(ServiceNowConfig.user_id == current_user.id))
+    config = result.scalar_one_or_none()
+    if not config:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ServiceNow config not found")
+
+    if config_data.instance_url:
+        config.instance_url = config_data.instance_url.rstrip("/")
+    if config_data.username:
+        config.username = config_data.username
+    if config_data.password:
+        config.password = config_data.password
+
+    await db.commit()
+    await db.refresh(config)
+    return config
+
+
+@app.delete(
+    "/api/servicenow/config",
+    tags=["ServiceNow Configuration"],
+    summary="Delete ServiceNow configuration",
+    description="Remove ServiceNow integration settings.",
+    responses={
+        200: {"description": "Configuration deleted successfully"},
+        404: {"description": "Configuration not found"},
+        401: {"description": "Authentication required"},
+    }
+)
+async def delete_servicenow_config(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(ServiceNowConfig).where(ServiceNowConfig.user_id == current_user.id))
+    config = result.scalar_one_or_none()
+    if not config:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ServiceNow config not found")
+
+    await db.delete(config)
+    await db.commit()
+    return {"message": "ServiceNow configuration deleted successfully"}
+
+
+@app.post(
+    "/api/servicenow/test",
+    tags=["ServiceNow Configuration"],
+    summary="Test ServiceNow connection",
+    description="Test the ServiceNow connection with current configuration.",
+    responses={
+        200: {"description": "Connection test result"},
+        404: {"description": "Configuration not found"},
+        401: {"description": "Authentication required"},
+    }
+)
+async def test_servicenow_connection(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(ServiceNowConfig).where(ServiceNowConfig.user_id == current_user.id))
+    config = result.scalar_one_or_none()
+    if not config:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ServiceNow config not found")
+
+    client = ServiceNowClient(
+        instance_url=config.instance_url,
+        username=config.username,
+        password=config.password
+    )
+    
+    test_result = await client.test_connection()
+    return test_result
+
 
 
 # ============ Jira Projects Routes ============

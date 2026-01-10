@@ -45,6 +45,7 @@ curl -X GET "/api/auth/me" \
 
 - **Authentication**: User management and JWT tokens
 - **Jira Configuration**: Integration settings
+- **ServiceNow Configuration**: ServiceNow integration settings for ticketing
 - **Projects**: Jira project management
 - **Meetings**: Transcription processing and history
 - **Kanban**: Board operations and tickets
