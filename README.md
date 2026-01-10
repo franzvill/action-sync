@@ -13,6 +13,7 @@ Transform meeting transcriptions into Jira tickets automatically using Claude AI
 - **Ask Mode**: Ask questions about your project in natural language. Claude searches across Jira tickets, past meetings, and your codebase to find answers.
 - **Work Mode**: Point Claude at a Jira ticket. It clones the relevant repos, reads the ticket and codebase, and works on the implementation.
 - **GitLab Integration**: Connect GitLab repositories to provide code context for ticket creation and AI work.
+- **ServiceNow Integration**: Automatically create and manage ServiceNow incidents and change requests based on repository events. [Learn more](docs/servicenow-integration.md)
 - **Meeting History & Semantic Search**: Store processed meetings with vector embeddings for intelligent search.
 - **Real-time Updates**: WebSocket connection for live processing feedback.
 - **Per-Project Customization**: Custom instructions, GitLab repos, and settings per project.
@@ -28,7 +29,7 @@ PostgreSQL Database (with pgvector)
     ↓
 Claude AI (via Azure Anthropic API)
     ↓
-Jira REST API + GitLab API
+Jira REST API + GitLab API + ServiceNow API
 ```
 
 - **Backend**: FastAPI with async SQLAlchemy (PostgreSQL/SQLite)
@@ -91,6 +92,24 @@ Jira REST API + GitLab API
 2. In Settings, enter:
    - GitLab URL (e.g., `https://gitlab.com`)
    - Personal Access Token
+
+### ServiceNow Setup (Optional)
+
+ServiceNow integration enables automatic creation and management of ServiceNow tickets based on repository events.
+
+1. Create a ServiceNow user account with appropriate permissions
+2. In the app Settings, configure ServiceNow:
+   - Instance URL (e.g., `https://dev123456.service-now.com`)
+   - Username
+   - Password
+3. Use the "Test Connection" button to verify your configuration
+
+**Supported Features:**
+- Create incidents with customizable urgency and impact levels
+- Create change requests for deployment tracking
+- Update existing tickets with work notes
+- Search and query incidents
+- Close incidents with resolution notes
 
 ### Adding Projects
 
