@@ -13,6 +13,7 @@ from typing import Callable, Any, Optional, Coroutine, List
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 from jira_tools import JiraClient, set_jira_client, set_result_callback, create_jira_mcp_server
 from config import get_settings
+from llm_client import get_llm_env, get_llm_model
 
 settings = get_settings()
 
@@ -213,12 +214,9 @@ Work step by step. If you encounter any issues or the task is unclear, stop and 
         permission_mode="bypassPermissions",
         mcp_servers={"jira": jira_server},
         allowed_tools=WORK_TOOLS,
-        model=settings.azure_anthropic_model if settings.azure_anthropic_model else "claude-opus-4-5",
+        model=get_llm_model(),
         cwd=work_dir,
-        env={
-            "ANTHROPIC_BASE_URL": settings.azure_anthropic_endpoint,
-            "ANTHROPIC_API_KEY": settings.azure_anthropic_api_key,
-        },
+        env=get_llm_env(),
     )
 
     try:

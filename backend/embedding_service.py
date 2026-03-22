@@ -2,20 +2,21 @@
 Embedding Service
 
 Handles text chunking, embedding generation, and semantic search.
-Uses Azure OpenAI for embeddings and LangChain for text splitting.
+Supports both Azure OpenAI and direct OpenAI for embeddings.
+Uses LangChain for text splitting.
 """
 
 import json
 from typing import List, Optional
-from openai import AsyncAzureOpenAI
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from config import get_settings
+from embedding_client import get_embedding_client
 from models import Meeting, MeetingChunk, EMBEDDING_DIM
 
-settings = get_settings()
+# Get the embedding client singleton
+embedding_client = get_embedding_client()
 
 # Chunk configuration
 CHUNK_SIZE = 1000  # Characters per chunk (larger for better context)
@@ -55,61 +56,16 @@ def chunk_text(content: str) -> List[str]:
 
 async def get_embedding(text: str) -> Optional[List[float]]:
     """
-    Generate embedding for a single text using Azure OpenAI.
+    Generate embedding for a single text using configured provider.
     """
-    if not settings.azure_openai_endpoint or not settings.azure_openai_api_key:
-        print("Azure OpenAI not configured, skipping embedding generation")
-        return None
-
-    try:
-        client = AsyncAzureOpenAI(
-            azure_endpoint=settings.azure_openai_endpoint,
-            api_key=settings.azure_openai_api_key,
-            api_version="2024-02-01"
-        )
-
-        response = await client.embeddings.create(
-            input=text,
-            model=settings.azure_openai_embedding_deployment
-        )
-
-        return response.data[0].embedding
-
-    except Exception as e:
-        print(f"Error generating embedding: {e}")
-        return None
+    return await embedding_client.get_embedding(text)
 
 
 async def get_embeddings_batch(texts: List[str]) -> List[Optional[List[float]]]:
     """
     Generate embeddings for multiple texts in batch.
     """
-    if not settings.azure_openai_endpoint or not settings.azure_openai_api_key:
-        print("Azure OpenAI not configured, skipping embedding generation")
-        return [None] * len(texts)
-
-    try:
-        client = AsyncAzureOpenAI(
-            azure_endpoint=settings.azure_openai_endpoint,
-            api_key=settings.azure_openai_api_key,
-            api_version="2024-02-01"
-        )
-
-        response = await client.embeddings.create(
-            input=texts,
-            model=settings.azure_openai_embedding_deployment
-        )
-
-        # Sort by index to maintain order
-        embeddings = [None] * len(texts)
-        for item in response.data:
-            embeddings[item.index] = item.embedding
-
-        return embeddings
-
-    except Exception as e:
-        print(f"Error generating embeddings batch: {e}")
-        return [None] * len(texts)
+    return await embedding_client.get_embeddings_batch(texts)
 
 
 async def store_meeting_with_embeddings(

@@ -15,6 +15,7 @@ from typing import Callable, Any, Optional, Coroutine, List
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, AssistantMessage, TextBlock, ToolUseBlock, ResultMessage
 from jira_tools import JiraClient, set_jira_client, set_result_callback, set_meeting_search_fn, create_jira_mcp_server
 from config import get_settings
+from llm_client import get_llm_env, get_llm_model
 from database import async_session_maker
 from embedding_service import semantic_search
 from session_manager import session_manager
@@ -219,12 +220,9 @@ async def _run_claude_with_jira(
         permission_mode="bypassPermissions",
         mcp_servers={"jira": jira_server},
         allowed_tools=JIRA_TOOLS,
-        model=settings.azure_anthropic_model if settings.azure_anthropic_model else "claude-opus-4-5",
+        model=get_llm_model(),
         cwd=cwd if cwd else None,
-        env={
-            "ANTHROPIC_BASE_URL": settings.azure_anthropic_endpoint,
-            "ANTHROPIC_API_KEY": settings.azure_anthropic_api_key,
-        },
+        env=get_llm_env(),
     )
 
     async with ClaudeSDKClient(options=options) as client:
@@ -506,12 +504,9 @@ Use the Read, Glob, and Grep tools to explore the codebase when the question inv
                 permission_mode="bypassPermissions",
                 mcp_servers={"jira": jira_server},
                 allowed_tools=JIRA_TOOLS,
-                model=settings.azure_anthropic_model if settings.azure_anthropic_model else "claude-opus-4-5",
+                model=get_llm_model(),
                 cwd=repos_dir if repos_dir else None,
-                env={
-                    "ANTHROPIC_BASE_URL": settings.azure_anthropic_endpoint,
-                    "ANTHROPIC_API_KEY": settings.azure_anthropic_api_key,
-                },
+                env=get_llm_env(),
             )
 
             # Create session through manager
