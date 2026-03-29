@@ -96,6 +96,29 @@ class JiraProjectUpdate(BaseModel):
     kanban_jql: Optional[str] = Field(None, description="Custom JQL for Kanban board")
 
 
+# ServiceNow config schemas
+class ServiceNowConfigCreate(BaseModel):
+    instance_url: str = Field(..., description="ServiceNow instance URL", example="https://dev123456.service-now.com")
+    username: str = Field(..., description="ServiceNow username", example="admin")
+    password: str = Field(..., description="ServiceNow password", example="your-password")
+
+
+class ServiceNowConfigResponse(BaseModel):
+    id: int = Field(..., description="Configuration ID")
+    instance_url: str = Field(..., description="ServiceNow instance URL")
+    username: str = Field(..., description="ServiceNow username")
+    created_at: datetime = Field(..., description="Configuration creation timestamp")
+
+    class Config:
+        from_attributes = True
+
+
+class ServiceNowConfigUpdate(BaseModel):
+    instance_url: Optional[str] = Field(None, description="ServiceNow instance URL")
+    username: Optional[str] = Field(None, description="ServiceNow username")
+    password: Optional[str] = Field(None, description="ServiceNow password")
+
+
 # Meeting schemas
 class MeetingProcessRequest(BaseModel):
     transcription: str = Field(..., description="Meeting transcription text", example="We discussed implementing a new user authentication system...")

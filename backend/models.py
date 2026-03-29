@@ -17,6 +17,7 @@ class User(Base):
 
     jira_config = relationship("JiraConfig", back_populates="user", uselist=False, cascade="all, delete-orphan")
     projects = relationship("JiraProject", back_populates="user", cascade="all, delete-orphan")
+    servicenow_config = relationship("ServiceNowConfig", back_populates="user", uselist=False, cascade="all, delete-orphan")
 
 
 class JiraConfig(Base):
@@ -50,6 +51,20 @@ class JiraProject(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="projects")
+
+
+class ServiceNowConfig(Base):
+    __tablename__ = "servicenow_configs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
+    instance_url = Column(String(512), nullable=False)  # e.g., https://dev123456.service-now.com
+    username = Column(String(255), nullable=False)
+    password = Column(Text, nullable=False)  # Encrypted in production
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    user = relationship("User", back_populates="servicenow_config")
 
 
 # Embedding dimension for text-embedding-3-small
